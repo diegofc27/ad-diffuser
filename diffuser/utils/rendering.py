@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 from matplotlib.colors import ListedColormap
 import gym
-#import mujoco_py as mjc
+import mujoco_py as mjc
 import warnings
 import pdb
 

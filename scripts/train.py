@@ -13,7 +13,7 @@ class Parser(utils.Parser):
     config: str = 'config.locomotion'
 
 args = Parser().parse_args('diffusion')
-
+print("batch size: ",args.batch_size)
 # start a new wandb run to track this script
 wandb.init(
     # set the wandb project where this run will be logged
@@ -86,7 +86,7 @@ diffusion_config = utils.Config(
 trainer_config = utils.Config(
     utils.Trainer,
     savepath=(args.savepath, 'trainer_config.pkl'),
-    train_batch_size=256,
+    train_batch_size=args.batch_size,
     train_lr=args.learning_rate,
     gradient_accumulate_every=args.gradient_accumulate_every,
     ema_decay=args.ema_decay,

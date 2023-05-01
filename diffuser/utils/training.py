@@ -99,13 +99,15 @@ class Trainer(object):
     #-----------------------------------------------------------------------------#
     #------------------------------------ api ------------------------------------#
     #-----------------------------------------------------------------------------#
-
     def train(self, n_train_steps):
 
         timer = Timer()
         for step in range(n_train_steps):
             for i in range(self.gradient_accumulate_every):
                 batch = next(self.dataloader)
+                #import pdb; pdb.set_trace()
+
+                # print("Batch dim: ", batch.shape)
                 batch = batch_to_device(batch)
 
                 loss, infos = self.model.loss(*batch)
@@ -201,7 +203,7 @@ class Trainer(object):
 
             ## get a single datapoint
             batch = self.dataloader_vis.__next__()
-            conditions = to_device(batch.conditions, 'cuda:0')
+            conditions = to_device(batch.conditions, 'cuda:4')
 
             ## repeat each item in conditions `n_samples` times
             conditions = apply_dict(

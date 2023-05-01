@@ -9,7 +9,6 @@ from contextlib import (
     redirect_stderr,
     redirect_stdout,
 )
-print("aaaaaa")
 @contextmanager
 def suppress_output():
     """
@@ -20,9 +19,9 @@ def suppress_output():
         with redirect_stderr(fnull) as err, redirect_stdout(fnull) as out:
             yield (err, out)
 
-#with suppress_output():
-    ## d4rl prints out a variety of warnings
-    #import d4rl
+with suppress_output():
+    # d4rl prints out a variety of warnings
+    import d4rl
 
 #-----------------------------------------------------------------------------#
 #-------------------------------- general api --------------------------------#
@@ -94,13 +93,13 @@ def sequence_dataset(env, preprocess_fn):
             final_timestep = dataset['timeouts'][i]
             #print("final",final_timestep )
         else:
-            #final_timestep = (episode_step == env._max_episode_steps - 1)
-            final_timestep = (episode_step == 500 - 1)
+            final_timestep = (episode_step == env._max_episode_steps - 1)
+            #final_timestep = (episode_step == 500 - 1)
         for k in dataset:
             if 'metadata' in k: continue
             data_[k].append(dataset[k][i])
-
-        if done_bool:
+        #if done_bool:
+        if done_bool or final_timestep:
             
             episode_step = 0
             episode_data = {}
