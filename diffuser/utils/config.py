@@ -64,5 +64,6 @@ class Config(collections.Mapping):
     def __call__(self, *args, **kwargs):
         instance = self._class(*args, **kwargs, **self._dict)
         if self._device:
+            #print(f'[ utils/config ] Moving {self._class} to {self._device}')
             instance = instance.to(self._device)
         return instance

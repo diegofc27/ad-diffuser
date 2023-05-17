@@ -59,3 +59,69 @@ class GuidedPolicy:
             'd -> repeat d', repeat=batch_size,
         )
         return conditions
+
+
+class ContextPolicy(GuidedPolicy):
+
+    def __call__(self, conditions, batch_size=1, verbose=True):
+        
+        # conditions = {k: self.preprocess_fn(v) for k, v in conditions.items()}
+        conditions = self._format_conditions(conditions, batch_size)
+
+        ## run reverse diffusion process
+        samples = self.diffusion_model(conditions, guide=self.guide, verbose=verbose, **self.sample_kwargs)
+        trajectories = utils.to_np(samples.trajectories)
+
+        ## extract action [ batch_size x horizon x transition_dim ]
+        actions = trajectories[:, :, :self.action_dim]
+        #print(actions[:,:20,:])
+        #actions = self.normalizer.unnormalize(actions, 'actions')
+        #print(actions[:,:20,:])
+        ## extract first action
+        present_idx = conditions.shape[1]
+
+        action = actions[0, present_idx]
+
+        normed_observations = trajectories[:, :, self.action_dim:]
+        observations = self.normalizer.unnormalize(normed_observations, 'observations')
+
+        trajectories = Trajectories(actions, observations, samples.values)
+        return action, trajectories
+
+   
+    def _format_conditions(self, conditions, batch_size):
+        conditions = utils.to_torch(conditions, dtype=torch.float32, device='cuda:0')
+        return conditions
+    
+
+class NonGuidedPolicy(GuidedPolicy):
+   
+    
+    def __init__(self, diffusion_model, normalizer, preprocess_fns, **sample_kwargs):
+        self.diffusion_model = diffusion_model
+        self.normalizer = normalizer
+        self.action_dim = diffusion_model.action_dim
+        self.preprocess_fn = get_policy_preprocess_fn(preprocess_fns)
+        self.sample_kwargs = sample_kwargs
+
+    def __call__(self, conditions, batch_size=1, verbose=True):
+        conditions = {k: self.preprocess_fn(v) for k, v in conditions.items()}
+        conditions = self._format_conditions(conditions, batch_size)
+
+        ## run reverse diffusion process
+        self.sample_kwargs ={}
+        samples = self.diffusion_model(conditions, verbose=verbose, **self.sample_kwargs)
+        trajectories = utils.to_np(samples.trajectories)
+
+        ## extract action [ batch_size x horizon x transition_dim ]
+        actions = trajectories[:, :, :self.action_dim]
+        actions = self.normalizer.unnormalize(actions, 'actions')
+
+        ## extract first action
+        action = actions[0, 0]
+
+        normed_observations = trajectories[:, :, self.action_dim:]
+        observations = self.normalizer.unnormalize(normed_observations, 'observations')
+
+        trajectories = Trajectories(actions, observations, samples.values)
+        return action, trajectories

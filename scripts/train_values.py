@@ -16,7 +16,8 @@ wandb.init(
     # set the wandb project where this run will be logged
     project="diffuser",
     entity="diegofc",
-    group="values",
+    group=args.run_group,
+    name=args.run_name,
     # track hyperparameters and run metadata
     config=args
 )
@@ -35,9 +36,9 @@ dataset_config = utils.Config(
     use_padding=args.use_padding,
     max_path_length=args.max_path_length,
     ## value-specific kwargs
-    discount=args.discount,
-    termination_penalty=args.termination_penalty,
-    normed=args.normed,
+    #discount=args.discount,
+    #termination_penalty=args.termination_penalty,
+    #normed=args.normed,
 )
 
 render_config = utils.Config(
@@ -108,7 +109,6 @@ trainer = trainer_config(diffusion, dataset, renderer,wandb=wandb)
 
 print('Testing forward...', end=' ', flush=True)
 batch = utils.batchify(dataset[0])
-
 loss, _ = diffusion.loss(*batch)
 loss.backward()
 print('✓')

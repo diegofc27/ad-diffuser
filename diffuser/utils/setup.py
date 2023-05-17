@@ -93,7 +93,7 @@ class Parser(Tap):
             return
 
         print(f'[ utils/setup ] Found extras: {extras}')
-        assert len(extras) % 2 == 0, f'Found odd number ({len(extras)}) of extras: {extras}'
+        # assert len(extras) % 2 == 0, f'Found odd number ({len(extras)}) of extras: {extras}'
         for i in range(0, len(extras), 2):
             key = extras[i].replace('--', '')
             val = extras[i+1]

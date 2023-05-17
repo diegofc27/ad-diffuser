@@ -16,13 +16,14 @@ class SequenceDataset(torch.utils.data.Dataset):
 
     def __init__(self, env='hopper-medium-replay', horizon=64,
         normalizer='LimitsNormalizer', preprocess_fns=[], max_path_length=1000,
-        max_n_episodes=10000, termination_penalty=0, use_padding=True, seed=None):
+        max_n_episodes=10000, termination_penalty=0, use_padding=True, seed=None, use_normalizer=True):
         self.preprocess_fn = get_preprocess_fn(preprocess_fns, env)
         self.env = env = load_environment(env)
         self.env.seed(seed)
         self.horizon = horizon
         self.max_path_length = max_path_length
         self.use_padding = use_padding
+        self.use_normalizer = use_normalizer
         itr = sequence_dataset(env, self.preprocess_fn)
 
         fields = ReplayBuffer(max_n_episodes, max_path_length, termination_penalty)
@@ -40,10 +41,8 @@ class SequenceDataset(torch.utils.data.Dataset):
         self.n_episodes = fields.n_episodes
         self.path_lengths = fields.path_lengths
         self.normalize()
-
         # shapes = {key: val.shape for key, val in self.fields.items()}
         # print(f'[ datasets/mujoco ] Dataset fields: {shapes}')
-
     def normalize(self, keys=['observations', 'actions']):
         '''
             normalize fields that will be predicted by the diffusion model
@@ -81,12 +80,17 @@ class SequenceDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx, eps=1e-4):
         path_ind, start, end = self.indices[idx]
 
-        observations = self.fields.normed_observations[path_ind, start:end]
-        actions = self.fields.normed_actions[path_ind, start:end]
+        if self.use_normalizer:
+            observations = self.fields.normed_observations[path_ind, start:end]
+            actions = self.fields.normed_actions[path_ind, start:end]
+        else:
+            observations = self.fields.observations[path_ind, start:end]
+            actions = self.fields.actions[path_ind, start:end]
 
         conditions = self.get_conditions(observations)
         trajectories = np.concatenate([actions, observations], axis=-1)
         batch = Batch(trajectories, conditions)
+
         return batch
 
 
@@ -100,6 +104,42 @@ class GoalDataset(SequenceDataset):
             0: observations[0],
             self.horizon - 1: observations[-1],
         }
+
+        
+
+class ContextDataset(SequenceDataset):
+    '''
+        adds a value field to the datapoints for training the value function
+    '''
+    def __init__(self, *args, context_len=800, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.context_len = context_len
+
+
+    def get_conditions(self, trajectories):
+        '''
+            condition on current observation for planning
+        '''
+        return trajectories[:self.context_len]
+    
+    def get_first_conditions(self, trajectories):
+        '''
+            condition on current observation for planning
+        '''
+        return trajectories[:5]
+        
+        
+    def __getitem__(self, idx):
+        path_ind, start, end = self.indices[idx]
+
+        observations = self.fields.normed_observations[path_ind, start:end]
+        actions = self.fields.normed_actions[path_ind, start:end]
+
+        trajectories = np.concatenate([actions, observations], axis=-1)
+        conditions = self.get_first_conditions(trajectories)
+        batch = Batch(trajectories, conditions)
+
+        return batch
 
 
 class ValueDataset(SequenceDataset):
@@ -143,5 +183,44 @@ class ValueDataset(SequenceDataset):
         if self.normed:
             value = self.normalize_value(value)
         value = np.array([value], dtype=np.float32)
+        value_batch = ValueBatch(*batch, value)
+        return value_batch
+
+class ValueEpisodeDataset(SequenceDataset):
+
+    def __init__(self, *args, discount=0.99, normed=False, **kwargs):
+        super().__init__(*args, **kwargs)
+       
+        self.normed = False
+        if normed:
+            self.vmin, self.vmax = 1,200
+            self.normed = True
+
+
+    def _get_bounds(self):
+        print('[ datasets/sequence ] Getting value dataset bounds...', end=' ', flush=True)
+        vmin = np.inf
+        vmax = -np.inf
+        for i in range(len(self.indices)):
+            value = self.__getitem__(i).values.item()
+            vmin = min(value, vmin)
+            vmax = max(value, vmax)
+        print('✓')
+        return vmin, vmax
+
+    def normalize_value(self, value):
+        ## [0, 1]
+        normed = (value - self.vmin) / (self.vmax - self.vmin)
+        ## [-1, 1]
+        normed = normed * 2 - 1
+        return normed
+    def __getitem__(self, idx):
+        batch = super().__getitem__(idx)
+        path_ind, start, end = self.indices[idx]
+        values = self.fields['episode_idx'][path_ind, start:]
+        value = np.array([values[0].item()], dtype=np.float32)
+        # if self.normed:
+        #     value = self.normalize_value(value)
+        value = np.array(value, dtype=np.float32)
         value_batch = ValueBatch(*batch, value)
         return value_batch

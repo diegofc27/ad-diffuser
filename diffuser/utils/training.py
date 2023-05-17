@@ -71,11 +71,12 @@ class Trainer(object):
         self.gradient_accumulate_every = gradient_accumulate_every
 
         self.dataset = dataset
+        
         self.dataloader = cycle(torch.utils.data.DataLoader(
-            self.dataset, batch_size=train_batch_size, num_workers=3, shuffle=True, pin_memory=True
+            self.dataset, batch_size=train_batch_size, num_workers=4, shuffle=True, pin_memory=True
         ))
         self.dataloader_vis = cycle(torch.utils.data.DataLoader(
-            self.dataset, batch_size=1, num_workers=3, shuffle=True, pin_memory=True
+            self.dataset, batch_size=1, num_workers=4, shuffle=True, pin_memory=True
         ))
         self.renderer = renderer
         self.optimizer = torch.optim.Adam(diffusion_model.parameters(), lr=train_lr)
@@ -133,13 +134,28 @@ class Trainer(object):
                 log["loss"] = loss
                 self.wandb.log(log)
 
-            if self.step == 0 and self.sample_freq:
-                self.render_reference(self.n_reference)
+            # if self.step == 0 and self.sample_freq:
+            #     self.render_reference(self.n_reference)
 
-            if self.sample_freq and self.step % self.sample_freq == 0:
-                self.render_samples()
+            # if self.sample_freq and self.step % self.sample_freq == 0:
+            #     self.render_samples()
 
             self.step += 1
+
+    def test(self,n_test_steps):
+        with torch.no_grad():
+            for step in range(n_test_steps):
+                batch = next(self.dataloader)
+                #import pdb; pdb.set_trace()
+
+                # print("Batch dim: ", batch.shape)
+                batch = batch_to_device(batch)
+
+                loss, infos = self.model.loss(*batch)
+                loss = loss / self.gradient_accumulate_every
+
+                infos_str = ' | '.join([f'{key}: {val:8.4f}' for key, val in infos.items()])
+                print(f'{self.step}: {loss:8.4f} | {infos_str} ', flush=True)
 
     def save(self, epoch):
         '''
@@ -163,7 +179,6 @@ class Trainer(object):
         '''
         loadpath = os.path.join(self.logdir, f'state_{epoch}.pt')
         data = torch.load(loadpath)
-
         self.step = data['step']
         self.model.load_state_dict(data['model'])
         self.ema_model.load_state_dict(data['ema'])
@@ -203,7 +218,7 @@ class Trainer(object):
 
             ## get a single datapoint
             batch = self.dataloader_vis.__next__()
-            conditions = to_device(batch.conditions, 'cuda:4')
+            conditions = to_device(batch.conditions, 'cuda:0') #TODO: remove hardcoding
 
             ## repeat each item in conditions `n_samples` times
             conditions = apply_dict(

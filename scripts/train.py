@@ -1,8 +1,6 @@
-print("before")
 import diffuser.utils as utils
 import torch
 import wandb
-print("after utils")
 
 #-----------------------------------------------------------------------------#
 #----------------------------------- setup -----------------------------------#
@@ -12,14 +10,15 @@ class Parser(utils.Parser):
     dataset: str = 'hopper-medium-expert-v2'
     config: str = 'config.locomotion'
 
-args = Parser().parse_args('diffusion')
+args = Parser().parse_args('diffusion-ad')
 print("batch size: ",args.batch_size)
-# start a new wandb run to track this script
+#start a new wandb run to track this script
 wandb.init(
     # set the wandb project where this run will be logged
     project="diffuser",
     entity="diegofc",
-    group="diffusion",
+    group=args.run_group,
+    name=args.run_name,
     # track hyperparameters and run metadata
     config=args
 )
@@ -107,7 +106,6 @@ trainer_config = utils.Config(
 model = model_config()
 
 diffusion = diffusion_config(model)
-
 trainer = trainer_config(diffusion, dataset, renderer, wandb =wandb)
 
 
@@ -135,12 +133,6 @@ def cycle(dl):
 
 n_epochs = int(args.n_train_steps // args.n_steps_per_epoch)
 
-# dataloader = cycle(torch.utils.data.DataLoader(
-#             dataset, batch_size=64, num_workers=3, shuffle=True, pin_memory=True
-#         ))
-# batch = next(dataloader)
-
-# print(batch)
 
 for i in range(n_epochs):
     print(f'Epoch {i} / {n_epochs} | {args.savepath}')

@@ -144,7 +144,10 @@ def apply_conditioning(x, conditions, action_dim):
         x[:, t, action_dim:] = val.clone()
     return x
 
-
+def apply_conditioning_all(x, conditions):
+    context_len = conditions.shape[1]
+    x[:,:context_len, :] = conditions
+    return x
 #-----------------------------------------------------------------------------#
 #---------------------------------- losses -----------------------------------#
 #-----------------------------------------------------------------------------#
@@ -163,8 +166,11 @@ class WeightedLoss(nn.Module):
         '''
         loss = self._loss(pred, targ)
         weighted_loss = (loss * self.weights).mean()
+        context_len = 5
         a0_loss = (loss[:, 0, :self.action_dim] / self.weights[0, :self.action_dim]).mean()
-        return weighted_loss, {'a0_loss': a0_loss}
+        a1_loss = (loss[:, 1, :self.action_dim] / self.weights[0, :self.action_dim]).mean()
+        a2_loss = (loss[:, 2, :self.action_dim] / self.weights[0, :self.action_dim]).mean()
+        return weighted_loss, {'a0_loss': a0_loss, 'a1_loss': a1_loss, 'a2_loss': a2_loss}
 
 class ValueLoss(nn.Module):
     def __init__(self, *args):
@@ -172,7 +178,6 @@ class ValueLoss(nn.Module):
 
     def forward(self, pred, targ):
         loss = self._loss(pred, targ).mean()
-
         if len(pred) > 1:
             corr = np.corrcoef(
                 utils.to_np(pred).squeeze(),
@@ -180,8 +185,8 @@ class ValueLoss(nn.Module):
             )[0,1]
         else:
             corr = np.NaN
-
         info = {
+            'pred': pred.detach().cpu().numpy()[0].item(),  'targ': targ.detach().cpu().numpy()[0].item(),
             'mean_pred': pred.mean(), 'mean_targ': targ.mean(),
             'min_pred': pred.min(), 'min_targ': targ.min(),
             'max_pred': pred.max(), 'max_targ': targ.max(),

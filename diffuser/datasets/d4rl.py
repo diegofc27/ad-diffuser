@@ -19,9 +19,9 @@ def suppress_output():
         with redirect_stderr(fnull) as err, redirect_stdout(fnull) as out:
             yield (err, out)
 
-with suppress_output():
-    # d4rl prints out a variety of warnings
-    import d4rl
+# with suppress_output():
+#     # d4rl prints out a variety of warnings
+#     import d4rl
 
 #-----------------------------------------------------------------------------#
 #-------------------------------- general api --------------------------------#
@@ -41,7 +41,7 @@ def load_environment(name):
 def get_dataset(env):
 
     if(env.unwrapped.spec.id=='CartPole-v1'):
-        with open('/home/fernandi/projects/diffuser/history/history.pickle', 'rb') as handle:
+        with open('/home/fernandi/projects/diffuser/history/cartpole/history.pickle', 'rb') as handle:
             dataset = pickle.load(handle)
             print("loaded pickle")
     else:
@@ -93,13 +93,13 @@ def sequence_dataset(env, preprocess_fn):
             final_timestep = dataset['timeouts'][i]
             #print("final",final_timestep )
         else:
-            final_timestep = (episode_step == env._max_episode_steps - 1)
-            #final_timestep = (episode_step == 500 - 1)
+            #final_timestep = (episode_step == env._max_episode_steps - 1)
+            final_timestep = (episode_step == 500 - 1)
         for k in dataset:
             if 'metadata' in k: continue
             data_[k].append(dataset[k][i])
-        #if done_bool:
-        if done_bool or final_timestep:
+        if done_bool:
+        #if done_bool or final_timestep:
             
             episode_step = 0
             episode_data = {}

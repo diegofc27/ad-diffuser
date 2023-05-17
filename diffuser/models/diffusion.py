@@ -9,6 +9,7 @@ from .helpers import (
     cosine_beta_schedule,
     extract,
     apply_conditioning,
+    apply_conditioning_all,
     Losses,
 )
 
@@ -88,6 +89,7 @@ class GaussianDiffusion(nn.Module):
 
         ## get loss coefficients and initialize objective
         loss_weights = self.get_loss_weights(action_weight, loss_discount, loss_weights)
+        #loss_weights = torch.ones((400,5),device='cuda:0')
         self.loss_fn = Losses[loss_type](loss_weights, self.action_dim)
 
     def get_loss_weights(self, action_weight, discount, weights_dict):
@@ -180,7 +182,7 @@ class GaussianDiffusion(nn.Module):
         x, values = sort_by_values(x, values)
         if return_chain: chain = torch.stack(chain, dim=1)
         return Sample(x, values, chain)
-
+    
     @torch.no_grad()
     def conditional_sample(self, cond, horizon=None, **sample_kwargs):
         '''
@@ -234,6 +236,63 @@ class GaussianDiffusion(nn.Module):
         return self.conditional_sample(cond, *args, **kwargs)
 
 
+class GaussianDiffusionContext(GaussianDiffusion):
+    
+    @torch.no_grad()
+    def p_sample_loop(self, shape, cond, verbose=True, return_chain=False, sample_fn=default_sample_fn, **sample_kwargs):
+        device = self.betas.device
+        batch_size = shape[0]
+        x = torch.randn(shape, device=device)
+        x = apply_conditioning_all(x, cond)
+        
+        chain = [x] if return_chain else None
+        progress = utils.Progress(self.n_timesteps) if verbose else utils.Silent()
+        for i in reversed(range(0, self.n_timesteps)):
+            t = make_timesteps(batch_size, i, device)
+            #sample_kwargs ={}
+            x, values = sample_fn(self, x, cond, t, **sample_kwargs)
+            x = apply_conditioning_all(x, cond)
+            
+            progress.update({'t': i, 'vmin': values.min().item(), 'vmax': values.max().item()})
+            if return_chain: chain.append(x)
+
+        progress.stamp()
+        x, values = sort_by_values(x, values)
+        if return_chain: chain = torch.stack(chain, dim=1)
+        return Sample(x, values, chain)
+    
+    def p_losses(self, x_start, cond, t):
+        noise = torch.randn_like(x_start)
+
+        x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise)
+        x_noisy = apply_conditioning_all(x_noisy, cond)
+
+        x_recon = self.model(x_noisy, cond, t)
+        x_recon = apply_conditioning_all(x_recon, cond)
+        assert noise.shape == x_recon.shape
+
+        if self.predict_epsilon:
+            loss, info = self.loss_fn(x_recon, noise)
+        else:
+            loss, info = self.loss_fn(x_recon, x_start)
+
+        return loss, info
+    
+    @torch.no_grad()
+    def conditional_sample(self, cond, horizon=400, **sample_kwargs):
+        '''
+            conditions : [ (time, state), ... ]
+        '''
+        device = self.betas.device
+        #batch_size = len(cond[0])
+        #batch_size = cond.shape[0]
+        horizon = horizon or self.horizon
+        batch_size = 1
+        shape = (batch_size, horizon, self.transition_dim)
+        return self.p_sample_loop(shape, cond, **sample_kwargs)
+
+
+
 class ValueDiffusion(GaussianDiffusion):
 
     def p_losses(self, x_start, cond, target, t):
@@ -243,7 +302,6 @@ class ValueDiffusion(GaussianDiffusion):
         x_noisy = apply_conditioning(x_noisy, cond, self.action_dim)
 
         pred = self.model(x_noisy, cond, t)
-
         loss, info = self.loss_fn(pred, target)
         return loss, info
 

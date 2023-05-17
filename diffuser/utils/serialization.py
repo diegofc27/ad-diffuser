@@ -28,6 +28,7 @@ def get_latest_epoch(loadpath):
 
 def load_config(*loadpath):
     loadpath = os.path.join(*loadpath)
+    print(f'[ utils/serialization ] Loading config from {loadpath}')
     config = pickle.load(open(loadpath, 'rb'))
     print(f'[ utils/serialization ] Loaded config from {loadpath}')
     print(config)
@@ -39,11 +40,9 @@ def load_diffusion(*loadpath, epoch='latest', device='cuda:0', seed=None):
     model_config = load_config(*loadpath, 'model_config.pkl')
     diffusion_config = load_config(*loadpath, 'diffusion_config.pkl')
     trainer_config = load_config(*loadpath, 'trainer_config.pkl')
-
     ## remove absolute path for results loaded from azure
     ## @TODO : remove results folder from within trainer class
     trainer_config._dict['results_folder'] = os.path.join(*loadpath)
-
     dataset = dataset_config(seed=seed)
     renderer = render_config()
     model = model_config()

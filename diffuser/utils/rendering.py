@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 from matplotlib.colors import ListedColormap
 import gym
-import mujoco_py as mjc
+#import mujoco_py as mjc
 import warnings
 import pdb
 
@@ -67,11 +67,11 @@ class MuJoCoRenderer:
         ## - 1 because the envs in renderer are fully-observed
         self.observation_dim = np.prod(self.env.observation_space.shape) - 1
         self.action_dim = np.prod(self.env.action_space.shape)
-        try:
-            self.viewer = mjc.MjRenderContextOffscreen(self.env.sim)
-        except:
-            print('[ utils/rendering ] Warning: could not initialize offscreen renderer')
-            self.viewer = None
+        # try:
+        #     self.viewer = mjc.MjRenderContextOffscreen(self.env.sim)
+        # except:
+        #     print('[ utils/rendering ] Warning: could not initialize offscreen renderer')
+        #     self.viewer = None
 
     def pad_observation(self, observation):
         state = np.concatenate([

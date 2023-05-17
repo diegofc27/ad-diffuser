@@ -82,7 +82,7 @@ rollout = [observation.copy()]
 total_reward = 0
 frames = []
 
-for t in range(args.):
+for t in range(550):
 
     if t % 10 == 0: print(args.savepath, flush=True)
 
