@@ -2,8 +2,9 @@ import pdb
 
 import diffuser.sampling as sampling
 import diffuser.utils as utils
+from diffuser.models.temporal import ValueFunctionL2
 import numpy as np
-
+import datetime
 #-----------------------------------------------------------------------------#
 #----------------------------------- setup -----------------------------------#
 #-----------------------------------------------------------------------------#
@@ -14,6 +15,7 @@ class Parser(utils.Parser):
 
 args = Parser().parse_args('plan')
 
+l2_guide = True
 
 #-----------------------------------------------------------------------------#
 #---------------------------------- loading ----------------------------------#
@@ -24,20 +26,24 @@ diffusion_experiment = utils.load_diffusion(
     args.loadbase, args.dataset, args.diffusion_loadpath,
     epoch=args.diffusion_epoch, seed=args.seed,
 )
-value_experiment = utils.load_diffusion(
-    args.loadbase, args.dataset, args.value_loadpath,
-    epoch=args.value_epoch, seed=args.seed,
-)
+if not l2_guide:
+    value_experiment = utils.load_diffusion(
+        args.loadbase, args.dataset, args.value_loadpath,
+        epoch=args.value_epoch, seed=args.seed,
+    )
 
-## ensure that the diffusion model and value function are compatible with each other
-utils.check_compatibility(diffusion_experiment, value_experiment)
+    ## ensure that the diffusion model and value function are compatible with each other
+    utils.check_compatibility(diffusion_experiment, value_experiment)
 
 diffusion = diffusion_experiment.ema
 dataset = diffusion_experiment.dataset
 renderer = diffusion_experiment.renderer
 
 ## initialize value guide
-value_function = value_experiment.ema
+if l2_guide:
+    value_function = ValueFunctionL2()
+else:
+    value_function = value_experiment.ema
 guide_config = utils.Config(args.guide, model=value_function, verbose=False)
 guide = guide_config()
 
@@ -72,60 +78,80 @@ policy = policy_config()
 #-----------------------------------------------------------------------------#
 #--------------------------------- main loop ---------------------------------#
 #-----------------------------------------------------------------------------#
+reward_list = []
+cost_list = []
+success_count = 0
+num_episodes = 50
+for i in range(num_episodes):
+    env = dataset.env
+    observation = env.reset()
 
-env = dataset.env
-observation = env.reset()
+    ## observations for rendering
+    rollout = [observation.copy()]
 
-## observations for rendering
-rollout = [observation.copy()]
+    total_reward = 0
+    total_cost = 0
+    frames = []
+    terminal = False
+    t=0
+    while not terminal:
 
-total_reward = 0
-frames = []
+        # if t % 10 == 0: print(args.savepath, flush=True)
 
-for t in range(550):
+        ## save state for rendering only
+        #state = env.state_vector().copy()
+        state = observation
 
-    if t % 10 == 0: print(args.savepath, flush=True)
+        ## format current observation for conditioning
+        conditions = {0: observation}
+        action, samples = policy(conditions, batch_size=args.batch_size, verbose=args.verbose)
 
-    ## save state for rendering only
-    #state = env.state_vector().copy()
-    state = observation
+        ## execute action in environment
+        print("action: ",action)
+        # action = np.round(action,0).astype(int).item()
+        # print("rounded: ",action)
 
-    ## format current observation for conditioning
-    conditions = {0: observation}
-    action, samples = policy(conditions, batch_size=args.batch_size, verbose=args.verbose)
+        next_observation, reward, cost, terminal, info = env.step(action)
+        #frames.append(env.render(mode="rgb_array"))
 
-    ## execute action in environment
-    print("action: ",action)
-    action = np.round(action,0).astype(int).item()
-    print("rounded: ",action)
+        ## print reward and score
+        total_reward += reward
+        total_cost += cost
+        #score = env.get_normalized_score(total_reward)
+        # print(
+        #     f't: {t} | r: {reward:.2f} |  R: {total_reward:.2f} | score: {score:.4f} | '
+        #     f'values: {samples.values} | scale: {args.scale}',
+        #     flush=True,
+        # )
+        print(
+            f't: {t} | r: {reward:.2f} |  R: {total_reward:.2f} | Cost: {total_cost:.2f} | '
+            f'state: {next_observation} | scale: {args.scale}',
+            flush=True,
+        )
 
-    next_observation, reward, terminal, _ = env.step(action)
-    #frames.append(env.render(mode="rgb_array"))
+        ## update rollout observations
+        rollout.append(next_observation.copy())
 
-    ## print reward and score
-    total_reward += reward
-    #score = env.get_normalized_score(total_reward)
-    # print(
-    #     f't: {t} | r: {reward:.2f} |  R: {total_reward:.2f} | score: {score:.4f} | '
-    #     f'values: {samples.values} | scale: {args.scale}',
-    #     flush=True,
-    # )
-    print(
-        f't: {t} | r: {reward:.2f} |  R: {total_reward:.2f} | '
-        f'state: {next_observation} | scale: {args.scale}',
-        flush=True,
-    )
+        ## render every `args.vis_freq` steps
+        #logger.log(t, samples, state, rollout)
+        now = datetime.datetime.now()
+        t+=1
+        if terminal:
+            if info["goal_reached"]:
+                success_count += 1
+            print("FINAL REWARD: ",total_reward," SUCCESS COUNT: ",success_count)
+            env.render(path="/home/fernandi/projects/diffuser/imgs", name=f"planGuided_{now.strftime('%Y-%m-%d_%H:%M:%S')}")
+            break
 
-    ## update rollout observations
-    rollout.append(next_observation.copy())
+        observation = next_observation
+    reward_list.append(total_reward)
+    cost_list.append(total_cost)
+print("reward list: ",reward_list)
+print("average reward: ",np.mean(reward_list))
+print("std reward: ",np.std(reward_list))
+print("success_rate: ",success_count/num_episodes)
+print("average cost: ",np.mean(cost_list))
 
-    ## render every `args.vis_freq` steps
-    #logger.log(t, samples, state, rollout)
-
-    if terminal:
-        break
-
-    observation = next_observation
 
 ## write results to json file at `args.savepath`
-logger.finish(t, score, total_reward, terminal, diffusion_experiment, value_experiment)
+#logger.finish(t, score, total_reward, terminal, diffusion_experiment, value_experiment)

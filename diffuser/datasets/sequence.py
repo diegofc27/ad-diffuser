@@ -16,7 +16,7 @@ class SequenceDataset(torch.utils.data.Dataset):
 
     def __init__(self, env='hopper-medium-replay', horizon=64,
         normalizer='LimitsNormalizer', preprocess_fns=[], max_path_length=1000,
-        max_n_episodes=10000, termination_penalty=0, use_padding=True, seed=None, use_normalizer=True):
+        max_n_episodes=20000, termination_penalty=0, use_padding=True, seed=None, use_normalizer=True):
         self.preprocess_fn = get_preprocess_fn(preprocess_fns, env)
         self.env = env = load_environment(env)
         self.env.seed(seed)
@@ -90,7 +90,6 @@ class SequenceDataset(torch.utils.data.Dataset):
         conditions = self.get_conditions(observations)
         trajectories = np.concatenate([actions, observations], axis=-1)
         batch = Batch(trajectories, conditions)
-
         return batch
 
 
@@ -116,12 +115,18 @@ class ContextDataset(SequenceDataset):
         self.context_len = context_len
 
 
-    def get_conditions(self, trajectories):
+    def get_conditions_context(self, trajectories):
         '''
             condition on current observation for planning
         '''
         return trajectories[:self.context_len]
     
+    def get_conditions(self, observations):
+        '''
+            condition on current observation for planning
+        '''
+        return {0: observations[0]}
+
     def get_first_conditions(self, trajectories):
         '''
             condition on current observation for planning
@@ -136,7 +141,7 @@ class ContextDataset(SequenceDataset):
         actions = self.fields.normed_actions[path_ind, start:end]
 
         trajectories = np.concatenate([actions, observations], axis=-1)
-        conditions = self.get_first_conditions(trajectories)
+        conditions = self.get_conditions(observations)
         batch = Batch(trajectories, conditions)
 
         return batch

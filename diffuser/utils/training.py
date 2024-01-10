@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import einops
 import pdb
-
+from scripts.eval_diffusion import eval_diffusion
 from .arrays import batch_to_device, to_np, to_device, apply_dict
 from .timer import Timer
 from .cloud import sync_logs
@@ -51,15 +51,18 @@ class Trainer(object):
         save_parallel=False,
         results_folder='./results',
         n_reference=8,
+        test_freq = 2000,
+        args = None,
         bucket=None,
-        wandb =None
+        wandb =None,
+        eval_model = False
     ):
         super().__init__()
         self.model = diffusion_model
         self.ema = EMA(ema_decay)
         self.ema_model = copy.deepcopy(self.model)
         self.update_ema_every = update_ema_every
-
+        self.test_freq = test_freq
         self.step_start_ema = step_start_ema
         self.log_freq = log_freq
         self.sample_freq = sample_freq
@@ -69,9 +72,9 @@ class Trainer(object):
         self.wandb = wandb
         self.batch_size = train_batch_size
         self.gradient_accumulate_every = gradient_accumulate_every
-
+        self.args = args
         self.dataset = dataset
-        
+        self.eval_model = eval_model
         self.dataloader = cycle(torch.utils.data.DataLoader(
             self.dataset, batch_size=train_batch_size, num_workers=4, shuffle=True, pin_memory=True
         ))
@@ -124,6 +127,13 @@ class Trainer(object):
             if self.step % self.save_freq == 0:
                 label = self.step // self.label_freq * self.label_freq
                 self.save(self.step)
+
+            if self.step % self.test_freq == 0 and self.eval_model and self.step > 0:
+                reward, cost =eval_diffusion(self.ema_model, self.dataset,self.args)
+                log = {}
+                log["reward"]  = reward
+                log["cost"] = cost
+                self.wandb.log(log)
 
             if self.step % self.log_freq == 0:
                 infos_str = ' | '.join([f'{key}: {val:8.4f}' for key, val in infos.items()])

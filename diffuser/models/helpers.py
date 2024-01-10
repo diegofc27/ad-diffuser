@@ -168,9 +168,9 @@ class WeightedLoss(nn.Module):
         weighted_loss = (loss * self.weights).mean()
         context_len = 5
         a0_loss = (loss[:, 0, :self.action_dim] / self.weights[0, :self.action_dim]).mean()
-        a1_loss = (loss[:, 1, :self.action_dim] / self.weights[0, :self.action_dim]).mean()
-        a2_loss = (loss[:, 2, :self.action_dim] / self.weights[0, :self.action_dim]).mean()
-        return weighted_loss, {'a0_loss': a0_loss, 'a1_loss': a1_loss, 'a2_loss': a2_loss}
+        # a1_loss = (loss[:, 1, :self.action_dim] / self.weights[0, :self.action_dim]).mean()
+        # a2_loss = (loss[:, 2, :self.action_dim] / self.weights[0, :self.action_dim]).mean()
+        return weighted_loss, {'a0_loss': a0_loss}
 
 class ValueLoss(nn.Module):
     def __init__(self, *args):

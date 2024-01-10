@@ -10,13 +10,13 @@ class Parser(utils.Parser):
     dataset: str = 'hopper-medium-expert-v2'
     config: str = 'config.locomotion'
 
-args = Parser().parse_args('diffusion-ad')
+args = Parser().parse_args('diffusion-safe')
 print("batch size: ",args.batch_size)
 #start a new wandb run to track this script
 wandb.init(
     # set the wandb project where this run will be logged
-    project="diffuser",
-    entity="diegofc",
+    project="thesis",
+    entity="diegofc77",
     group=args.run_group,
     name=args.run_name,
     # track hyperparameters and run metadata
@@ -35,16 +35,17 @@ dataset_config = utils.Config(
     preprocess_fns=args.preprocess_fns,
     use_padding=args.use_padding,
     max_path_length=args.max_path_length,
+    use_normalizer=args.use_normalizer
 )
 
-render_config = utils.Config(
-    args.renderer,
-    savepath=(args.savepath, 'render_config.pkl'),
-    env=args.dataset,
-)
+# render_config = utils.Config(
+#     args.renderer,
+#     savepath=(args.savepath, 'render_config.pkl'),
+#     env=args.dataset,
+# )
 
 dataset = dataset_config()
-renderer = render_config()
+#renderer = render_config()
 
 observation_dim = dataset.observation_dim
 action_dim = dataset.action_dim
@@ -80,6 +81,7 @@ diffusion_config = utils.Config(
     loss_weights=args.loss_weights,
     loss_discount=args.loss_discount,
     device=args.device,
+    equal_weight=args.equal_weight,
 )
 
 trainer_config = utils.Config(
@@ -96,6 +98,8 @@ trainer_config = utils.Config(
     results_folder=args.savepath,
     bucket=args.bucket,
     n_reference=args.n_reference,
+    args=args,
+    eval_model=True
 
 )
 
@@ -106,7 +110,7 @@ trainer_config = utils.Config(
 model = model_config()
 
 diffusion = diffusion_config(model)
-trainer = trainer_config(diffusion, dataset, renderer, wandb =wandb)
+trainer = trainer_config(diffusion, dataset, None, wandb =wandb)
 
 
 #-----------------------------------------------------------------------------#
@@ -120,8 +124,6 @@ batch = utils.batchify(dataset[0])
 loss, _ = diffusion.loss(*batch)
 loss.backward()
 print('✓')
-
-
 #-----------------------------------------------------------------------------#
 #--------------------------------- main loop ---------------------------------#
 #-----------------------------------------------------------------------------#

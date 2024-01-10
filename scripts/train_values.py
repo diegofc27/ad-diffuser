@@ -10,12 +10,12 @@ class Parser(utils.Parser):
     dataset: str = 'walker2d-medium-replay-v2'
     config: str = 'config.locomotion'
 
-args = Parser().parse_args('values')
+args = Parser().parse_args('values_static_l2')
 
 wandb.init(
     # set the wandb project where this run will be logged
-    project="diffuser",
-    entity="diegofc",
+    project="thesis",
+    entity="diegofc77",
     group=args.run_group,
     name=args.run_name,
     # track hyperparameters and run metadata
@@ -41,18 +41,17 @@ dataset_config = utils.Config(
     #normed=args.normed,
 )
 
-render_config = utils.Config(
-    args.renderer,
-    savepath=(args.savepath, 'render_config.pkl'),
-    env=args.dataset,
-)
+# render_config = utils.Config(
+#     args.renderer,
+#     savepath=(args.savepath, 'render_config.pkl'),
+#     env=args.dataset,
+# )
 
 dataset = dataset_config()
-renderer = render_config()
+# renderer = render_config()
 
 observation_dim = dataset.observation_dim
 action_dim = dataset.action_dim
-
 #-----------------------------------------------------------------------------#
 #------------------------------ model & trainer ------------------------------#
 #-----------------------------------------------------------------------------#
@@ -91,6 +90,7 @@ trainer_config = utils.Config(
     results_folder=args.savepath,
     bucket=args.bucket,
     n_reference=args.n_reference,
+    eval_model=False
 )
 
 #-----------------------------------------------------------------------------#
@@ -101,7 +101,7 @@ model = model_config()
 
 diffusion = diffusion_config(model)
 
-trainer = trainer_config(diffusion, dataset, renderer,wandb=wandb)
+trainer = trainer_config(diffusion, dataset,None,wandb=wandb)
 
 #-----------------------------------------------------------------------------#
 #------------------------ test forward & backward pass -----------------------#
@@ -111,6 +111,7 @@ print('Testing forward...', end=' ', flush=True)
 batch = utils.batchify(dataset[0])
 loss, _ = diffusion.loss(*batch)
 loss.backward()
+import pdb; pdb.set_trace()
 print('✓')
 
 #-----------------------------------------------------------------------------#

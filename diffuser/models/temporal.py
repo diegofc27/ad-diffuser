@@ -58,7 +58,7 @@ class TemporalUnet(nn.Module):
         attention=False,
     ):
         super().__init__()
-
+        print("Attention: ", attention)
         dims = [transition_dim, *map(lambda m: dim * m, dim_mults)]
         in_out = list(zip(dims[:-1], dims[1:]))
         print(f'[ models/temporal ] Channel dimensions: {in_out}')
@@ -236,7 +236,42 @@ class ValueFunction(nn.Module):
         x = x.view(len(x), -1)
         out = self.final_block(torch.cat([x, t], dim=-1))
         return out
-
+    
+class ValueFunctionL2(nn.Module):
+    def __init__(
+        self,
+        horizon=1,
+        transition_dim=16,
+        dim=32,
+        out_dim=1,
+    ):
+        super().__init__()
+        self.horizon = horizon
+        self.transition_dim = transition_dim
+        self.dim = dim
+        self.out_dim = out_dim
+        self.l2 = nn.MSELoss()
+    
+    def forward(self, x, *args):
+        '''
+            x : [ batch x horizon x transition ]
+            action : [ batch x horizon x action ]
+        '''
+        x = einops.rearrange(x, 'b h t -> b t h')
+        #add action to the transition dim
+        actions = x[:, :, :2]
+        #add action to the transition dim
+        act = torch.zeros_like(x)
+        act[:, :, 2:4] =+ actions
+        x_1 =+ act
+        #calculate the l2 loss for each batch
+        diff_batch = []
+        for i in range(len(x)):
+            diff_batch.append(-self.l2(x[i], x_1[i]))
+        #do this but in one operation
+        diff_batch = torch.stack(diff_batch)
+        # diff = self.l2(x[:,:,1:], x_1[:,:,:-1])
+        return diff_batch
 
 class ValueFunctionH400(nn.Module):
 
@@ -326,3 +361,14 @@ class ValueFunctionH400(nn.Module):
         x = x.view(len(x), -1)
         out = self.final_block(torch.cat([x, t], dim=-1))
         return out
+
+
+if __name__ == '__main__':
+    #model = ValueFunctionL2()
+    # x :[`batch_size` x `horizon` x `transition_dim`]
+    x = torch.zeros(3, 1, 16)
+    # action :[`batch_size` x `horizon` x `action_dim`]
+    action = torch.randn(3, 1, 2)
+    print(x)
+    x[:, :, 2:] =+ action
+    print(x)

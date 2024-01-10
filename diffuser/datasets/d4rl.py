@@ -9,6 +9,8 @@ from contextlib import (
     redirect_stderr,
     redirect_stdout,
 )
+
+from diffuser.environments.safe_grid import Safe_Grid, Safe_Grid_v1, Safe_Grid_Simple, Safe_Grid_v2
 @contextmanager
 def suppress_output():
     """
@@ -28,6 +30,18 @@ def suppress_output():
 #-----------------------------------------------------------------------------#
 
 def load_environment(name):
+    if name == 'Safe_Grid_Simple-v0':
+        env = Safe_Grid_Simple()
+        return env
+    elif name == 'Safe_Grid-v1':
+        env = Safe_Grid_v1()
+        return env
+    elif name == 'SafeGrid-v2':
+        env = Safe_Grid_v2()
+        return env
+    elif name == 'Safe_Grid-v0':
+        env = Safe_Grid()
+        return env
     if type(name) != str:
         ## name is already an environment
         return name
@@ -39,8 +53,17 @@ def load_environment(name):
     return env
 
 def get_dataset(env):
+    if env.name == 'SafeGrid-v2':
+         with open('/home/fernandi/projects/diffuser/trajectories/safe_grid_v2_10000__rate_0.92.pickle', 'rb') as handle:
+            dataset = pickle.load(handle)
+            print("loaded pickle")
 
-    if(env.unwrapped.spec.id=='CartPole-v1'):
+    elif env.name == 'SafeGrid-v1' or env.name == 'Safe_Grid_Simple-v0':
+         with open('/home/fernandi/projects/decision-diffuser/code/trajectories/safe_grid_v1_5000__rate_0.93.pickle', 'rb') as handle:
+            dataset = pickle.load(handle)
+            print("loaded pickle")
+
+    elif(env.unwrapped.spec.id=='CartPole-v1'):
         with open('/home/fernandi/projects/diffuser/history/cartpole/history.pickle', 'rb') as handle:
             dataset = pickle.load(handle)
             print("loaded pickle")
@@ -94,12 +117,12 @@ def sequence_dataset(env, preprocess_fn):
             #print("final",final_timestep )
         else:
             #final_timestep = (episode_step == env._max_episode_steps - 1)
-            final_timestep = (episode_step == 500 - 1)
+            final_timestep = (episode_step == 30 - 1)
         for k in dataset:
             if 'metadata' in k: continue
             data_[k].append(dataset[k][i])
-        if done_bool:
-        #if done_bool or final_timestep:
+        #if done_bool:
+        if done_bool or final_timestep:
             
             episode_step = 0
             episode_data = {}
