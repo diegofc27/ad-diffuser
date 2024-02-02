@@ -1014,8 +1014,6 @@ class Safe_Grid_v2(gym.Env):
 
         return x, y, theta
 
-    
-    
     def step(self, action):
         '''defines the logic of your environment when the agent takes an action
         Accepts an action, computes the state of the environment after applying that action
@@ -1045,8 +1043,8 @@ class Safe_Grid_v2(gym.Env):
         # if self._is_collision(self.state[0:2], self.obstacles):
         #     self.cost += 1
 
-        self.cost = self.cal_cost()
-
+        self.cost, self.num_violations = self.cal_cost()
+        self.info["violations"] = self.num_violations
 
         #if agent is out of bounds
         if self.state[0]<self.lower_bound[0] or self.state[0]>self.upper_bound[0] or self.state[1]<self.lower_bound[1] or self.state[1]>self.upper_bound[1]:
@@ -1061,6 +1059,7 @@ class Safe_Grid_v2(gym.Env):
             done= True
             info={}
             info["goal_reached"]=True
+            info["violations"] = self.num_violations
             self.acc_reward += self.reward
             self.acc_cost += self.cost
             return self.state, self.reward, self.cost, done, info
@@ -1068,7 +1067,6 @@ class Safe_Grid_v2(gym.Env):
         self.acc_reward += self.reward
         self.acc_cost += self.cost
         return self.state, self.reward, self.cost, done, self.info
-
 
     def get_new_goal(self):
         generate_new_goal = True
@@ -1159,14 +1157,14 @@ class Safe_Grid_v2(gym.Env):
     def cal_cost(self):
         """Contacts Processing."""
         cost = 0
-
+        violations = 0
         for h_pos in self.obstacles:
             h_dist = np.linalg.norm(self.state[0:2] - h_pos)
             if h_dist <= self.circle_width:
                 cost += self.obstacle_cost * (self.circle_width - h_dist)
-                self.num_violations += 1
+                violations += 1
 
-        return cost
+        return cost, violations
 
     def render(self,extra=None, path=None, name=None):
         fig, ax = plt.subplots()
@@ -1226,6 +1224,7 @@ class Safe_Grid_v2(gym.Env):
         self.history = []
         self.acc_reward = 0
         self.acc_cost = 0
+
 
 def main():
     env = Safe_Grid_V2()

@@ -41,6 +41,8 @@ class SequenceDataset(torch.utils.data.Dataset):
         self.n_episodes = fields.n_episodes
         self.path_lengths = fields.path_lengths
         self.normalize()
+
+        print(f'[ datasets/sequence ] Dataset fields: {self.fields}')
         # shapes = {key: val.shape for key, val in self.fields.items()}
         # print(f'[ datasets/mujoco ] Dataset fields: {shapes}')
     def normalize(self, keys=['observations', 'actions']):
@@ -190,7 +192,99 @@ class ValueDataset(SequenceDataset):
         value = np.array([value], dtype=np.float32)
         value_batch = ValueBatch(*batch, value)
         return value_batch
+    
 
+class CostDataset(SequenceDataset):
+    '''
+        adds a value field to the datapoints for training the value function
+    '''
+
+    def __init__(self, *args, discount=0.99, normed=False, safe_traj =False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.discount = discount
+        self.discounts = self.discount ** np.arange(self.max_path_length)[:,None]
+        self.normed = False
+        self.safe_traj = safe_traj
+        if normed:
+            self.vmin, self.vmax = self._get_bounds()
+            self.normed = True
+
+    def _get_bounds(self):
+        print('[ datasets/sequence ] Getting value dataset bounds...', end=' ', flush=True)
+        vmin = np.inf
+        vmax = -np.inf
+        for i in range(len(self.indices)):
+            value = self.__getitem__(i).values.item()
+            vmin = min(value, vmin)
+            vmax = max(value, vmax)
+        print('✓')
+        return vmin, vmax
+
+    def normalize_value(self, value):
+        ## [0, 1]
+        normed = (value - self.vmin) / (self.vmax - self.vmin)
+        # ## [-1, 1]
+        # normed = normed * 2 - 1
+        return normed
+
+    def __getitem__(self, idx):
+        batch = super().__getitem__(idx)
+        path_ind, start, end = self.indices[idx]
+        costs = self.fields['costs'][path_ind, start:]
+        # discounts = self.discounts[:len(costs)]
+        value = (costs).sum()
+        # if self.normed:
+        #     value = self.normalize_value(value)
+        value = np.array([value], dtype=np.float32)
+        value_batch = ValueBatch(*batch, value)
+        return value_batch
+
+
+class SafeDataset(SequenceDataset):
+    '''
+        adds a value field to the datapoints for training the value function
+    '''
+
+    def __init__(self, *args, discount=0.99, normed=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.discount = discount
+        self.discounts = self.discount ** np.arange(self.max_path_length)[:,None]
+        self.normed = False
+        if normed:
+            self.vmin, self.vmax = self._get_bounds()
+            self.normed = True
+
+    def _get_bounds(self):
+        print('[ datasets/sequence ] Getting value dataset bounds...', end=' ', flush=True)
+        vmin = np.inf
+        vmax = -np.inf
+        for i in range(len(self.indices)):
+            value = self.__getitem__(i).values.item()
+            vmin = min(value, vmin)
+            vmax = max(value, vmax)
+        print('✓')
+        return vmin, vmax
+
+    def normalize_value(self, value):
+        ## [0, 1]
+        normed = (value - self.vmin) / (self.vmax - self.vmin)
+        ## [-1, 1]
+        normed = normed * 2 - 1
+        return normed
+
+    def __getitem__(self, idx):
+        batch = super().__getitem__(idx)
+        path_ind, start, end = self.indices[idx]
+        costs = self.fields['costs'][path_ind, start:]
+        safe = 1 if costs.sum() == 0 else 0
+        # discounts = self.discounts[:len(rewards)]
+        # value = (discounts * rewards).sum()
+        # if self.normed:
+        #     value = self.normalize_value(value)
+        value = np.array([safe], dtype=np.float32)
+        value_batch = ValueBatch(*batch, value)
+        return value_batch
+    
 class ValueEpisodeDataset(SequenceDataset):
 
     def __init__(self, *args, discount=0.99, normed=False, **kwargs):

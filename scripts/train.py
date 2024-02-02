@@ -10,18 +10,18 @@ class Parser(utils.Parser):
     dataset: str = 'hopper-medium-expert-v2'
     config: str = 'config.locomotion'
 
-args = Parser().parse_args('diffusion-safe')
+args = Parser().parse_args('diffusion-bmw')
 print("batch size: ",args.batch_size)
 #start a new wandb run to track this script
-wandb.init(
-    # set the wandb project where this run will be logged
-    project="thesis",
-    entity="diegofc77",
-    group=args.run_group,
-    name=args.run_name,
-    # track hyperparameters and run metadata
-    config=args
-)
+# wandb.init(
+#     # set the wandb project where this run will be logged
+#     project="thesis",
+#     entity="diegofc77",
+#     group=args.run_group,
+#     name=args.run_name,
+#     # track hyperparameters and run metadata
+#     config=args
+# )
 #-----------------------------------------------------------------------------#
 #---------------------------------- dataset ----------------------------------#
 #-----------------------------------------------------------------------------#
@@ -123,6 +123,7 @@ print('Testing forward...', end=' ', flush=True)
 batch = utils.batchify(dataset[0])
 loss, _ = diffusion.loss(*batch)
 loss.backward()
+import pdb; pdb.set_trace()
 print('✓')
 #-----------------------------------------------------------------------------#
 #--------------------------------- main loop ---------------------------------#

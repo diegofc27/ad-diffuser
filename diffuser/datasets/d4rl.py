@@ -42,6 +42,18 @@ def load_environment(name):
     elif name == 'Safe_Grid-v0':
         env = Safe_Grid()
         return env
+    elif name == 'BMW-v0':
+        class BMWEnv(gym.Env):
+            def __init__(self):
+                self.action_space = gym.spaces.Box(-1, 1, (2,))
+                self.observation_space = gym.spaces.Box(-1, 1, (4,))
+                self.max_episode_steps = 30
+                self.name = 'BMW-v0'
+            def reset(self):
+                return np.zeros(4)
+            def step(self, action):
+                return np.zeros(4), 0, True, {}
+        return BMWEnv()
     if type(name) != str:
         ## name is already an environment
         return name
@@ -54,10 +66,13 @@ def load_environment(name):
 
 def get_dataset(env):
     if env.name == 'SafeGrid-v2':
+         #iold = '/home/fernandi/projects/diffuser/trajectories/safe_grid_v2_10000__rate_0.92.pickle'
          with open('/home/fernandi/projects/diffuser/trajectories/safe_grid_v2_10000__rate_0.92.pickle', 'rb') as handle:
             dataset = pickle.load(handle)
             print("loaded pickle")
-
+    elif env.name == 'BMW-v0':
+        with open('/home/fernandi/projects/diffuser/trajectories/bmw_train.pkl', 'rb') as handle:
+            dataset = pickle.load(handle)
     elif env.name == 'SafeGrid-v1' or env.name == 'Safe_Grid_Simple-v0':
          with open('/home/fernandi/projects/decision-diffuser/code/trajectories/safe_grid_v1_5000__rate_0.93.pickle', 'rb') as handle:
             dataset = pickle.load(handle)

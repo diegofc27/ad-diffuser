@@ -1,10 +1,11 @@
-import pdb
-
 import diffuser.sampling as sampling
 import diffuser.utils as utils
 from diffuser.models.temporal import ValueFunctionL2
 import numpy as np
 import datetime
+from diffuser.environments.safe_grid import  Safe_Grid_v2
+import json
+
 #-----------------------------------------------------------------------------#
 #----------------------------------- setup -----------------------------------#
 #-----------------------------------------------------------------------------#
@@ -15,12 +16,12 @@ class Parser(utils.Parser):
 
 args = Parser().parse_args('plan')
 
-l2_guide = True
+l2_guide = False
 
 #-----------------------------------------------------------------------------#
 #---------------------------------- loading ----------------------------------#
 #-----------------------------------------------------------------------------#
-
+save_path = f"/home/fernandi/projects/diffuser/{args.loadbase}/{args.dataset}/{args.value_loadpath}"
 ## load diffusion model and value function from disk
 diffusion_experiment = utils.load_diffusion(
     args.loadbase, args.dataset, args.diffusion_loadpath,
@@ -82,8 +83,10 @@ reward_list = []
 cost_list = []
 success_count = 0
 num_episodes = 50
+total_violations = 0
+
 for i in range(num_episodes):
-    env = dataset.env
+    env = Safe_Grid_v2(max_number_steps=50)
     observation = env.reset()
 
     ## observations for rendering
@@ -117,6 +120,7 @@ for i in range(num_episodes):
         ## print reward and score
         total_reward += reward
         total_cost += cost
+        total_violations += info["violations"]
         #score = env.get_normalized_score(total_reward)
         # print(
         #     f't: {t} | r: {reward:.2f} |  R: {total_reward:.2f} | score: {score:.4f} | '
@@ -151,7 +155,10 @@ print("average reward: ",np.mean(reward_list))
 print("std reward: ",np.std(reward_list))
 print("success_rate: ",success_count/num_episodes)
 print("average cost: ",np.mean(cost_list))
-
+print("number of violations: ",total_violations)
+#save json with values in args.loadbase
+with open(save_path + "/results.json", "w") as f:
+    json.dump({"reward":np.mean(reward_list),"cost":np.mean(cost_list),"success_rate":success_count/num_episodes,"violations":total_violations, "num_episodes":num_episodes},f)
 
 ## write results to json file at `args.savepath`
 #logger.finish(t, score, total_reward, terminal, diffusion_experiment, value_experiment)

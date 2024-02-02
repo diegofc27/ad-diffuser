@@ -128,12 +128,13 @@ class Trainer(object):
                 label = self.step // self.label_freq * self.label_freq
                 self.save(self.step)
 
-            if self.step % self.test_freq == 0 and self.eval_model and self.step > 0:
-                reward, cost =eval_diffusion(self.ema_model, self.dataset,self.args)
-                log = {}
-                log["reward"]  = reward
-                log["cost"] = cost
-                self.wandb.log(log)
+            # if self.step % self.test_freq == 0 and self.eval_model and self.step > 0:
+            #     reward, cost, violations =eval_diffusion(self.ema_model, self.dataset,self.args)
+            #     log = {}
+            #     log["reward"]  = reward
+            #     log["cost"] = cost
+            #     log["violations"] = violations
+            #     self.wandb.log(log)
 
             if self.step % self.log_freq == 0:
                 infos_str = ' | '.join([f'{key}: {val:8.4f}' for key, val in infos.items()])

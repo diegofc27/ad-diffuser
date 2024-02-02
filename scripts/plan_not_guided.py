@@ -58,6 +58,7 @@ policy = policy_config()
 reward_list = []
 cost_list = []
 num_episodes = 50   
+total_violations = 0
 success = 0
 for i in range(num_episodes):
     env = Safe_Grid_v2(max_number_steps=50)
@@ -89,6 +90,7 @@ for i in range(num_episodes):
         # print("rounded: ",action)
 
         next_observation, reward, cost, terminal, info = env.step(action)
+        total_violations += info["violations"]
         #frames.append(env.render(mode="rgb_array"))
 
         ## print reward and score
@@ -126,5 +128,5 @@ print("average reward: ",np.mean(reward_list))
 print("std reward: ",np.std(reward_list))
 print("avg cost: ",np.max(cost_list))
 print("success rate: ",success/num_episodes)
-
+print("total violations: ",total_violations)
 ## write results to json file at `args.savepath`

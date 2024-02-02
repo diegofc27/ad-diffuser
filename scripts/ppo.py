@@ -300,7 +300,7 @@ if __name__ == "__main__":
                 f"runs/{run_name}/ppo_best.pt",
                 make_env,
                 args.env_id,
-                num_trajectories=100,
+                num_trajectories=2000,
                 run_name=f"{run_name}-eval",
                 Model=Agent,
                 device=device,

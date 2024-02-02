@@ -2,6 +2,7 @@ import diffuser.utils as utils
 import pdb
 import wandb
 
+
 #-----------------------------------------------------------------------------#
 #----------------------------------- setup -----------------------------------#
 #-----------------------------------------------------------------------------#
@@ -10,7 +11,10 @@ class Parser(utils.Parser):
     dataset: str = 'walker2d-medium-replay-v2'
     config: str = 'config.locomotion'
 
-args = Parser().parse_args('values_static_l2')
+
+
+args = Parser().parse_args('values_cost')
+
 
 wandb.init(
     # set the wandb project where this run will be logged
@@ -25,6 +29,7 @@ print(args.dataset)
 #-----------------------------------------------------------------------------#
 #---------------------------------- dataset ----------------------------------#
 #-----------------------------------------------------------------------------#
+print("args ",args.savepath)
 
 dataset_config = utils.Config(
     args.loader,
@@ -111,7 +116,6 @@ print('Testing forward...', end=' ', flush=True)
 batch = utils.batchify(dataset[0])
 loss, _ = diffusion.loss(*batch)
 loss.backward()
-import pdb; pdb.set_trace()
 print('✓')
 
 #-----------------------------------------------------------------------------#

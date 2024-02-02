@@ -3,7 +3,7 @@ import torch.nn as nn
 import einops
 from einops.layers.torch import Rearrange
 import pdb
-
+import numpy as np
 from .helpers import (
     SinusoidalPosEmb,
     Downsample1d,
@@ -260,18 +260,46 @@ class ValueFunctionL2(nn.Module):
         x = einops.rearrange(x, 'b h t -> b t h')
         #add action to the transition dim
         actions = x[:, :, :2]
+        theta = x[:, :, 2]
         #add action to the transition dim
-        act = torch.zeros_like(x)
-        act[:, :, 2:4] =+ actions
-        x_1 =+ act
+        x_add = torch.zeros_like(x)
+        y_add = torch.zeros_like(x)
+        theta_add = torch.zeros_like(x)
+
+        x_,y_,theta_ = self.dynamics(actions[:,:,0], actions[:,:,1], theta)
+        x_add[:,:,0] = x_
+        y_add[:,:,1] = y_
+        theta_add[:,:,2] = theta_
+
+        x_1 = x + x_add + y_add + theta_add
         #calculate the l2 loss for each batch
         diff_batch = []
-        for i in range(len(x)):
-            diff_batch.append(-self.l2(x[i], x_1[i]))
+        for i in range(len(x)-1):
+            diff_batch.append(-self.l2(x[i+1], x_1[i]))
         #do this but in one operation
         diff_batch = torch.stack(diff_batch)
         # diff = self.l2(x[:,:,1:], x_1[:,:,:-1])
         return diff_batch
+    
+    
+    def dynamics(self, force_left, force_right, theta, dt=1, wheelbase=2.5):
+        # Normalize forces to ensure they are between 0 and 1
+        max_force = torch.max(torch.abs(force_left), torch.abs(force_right))
+        mask = max_force > 0
+        force_left = torch.where(mask, force_left / max_force, force_left.clone())
+        force_right = torch.where(mask, force_right / max_force, force_right.clone())
+
+
+        # Calculate linear and angular velocities
+        v_linear = 0.5 * (force_left + force_right)
+        omega = (force_right - force_left) / wheelbase
+
+        # Update state
+        x = v_linear * torch.cos(theta) * dt
+        y = v_linear * torch.sin(theta) * dt
+        theta = (theta + omega * dt) % (2 * torch.pi)
+
+        return x, y, theta
 
 class ValueFunctionH400(nn.Module):
 
