@@ -4,7 +4,8 @@ import numpy as np
 import torch
 import einops
 import pdb
-from scripts.eval_diffusion import eval_diffusion
+#from scripts.eval_diffusion import eval_diffusion
+from scripts.eval_diffusion_bmw import eval_diffusion
 from .arrays import batch_to_device, to_np, to_device, apply_dict
 from .timer import Timer
 from .cloud import sync_logs
@@ -128,13 +129,17 @@ class Trainer(object):
                 label = self.step // self.label_freq * self.label_freq
                 self.save(self.step)
 
-            # if self.step % self.test_freq == 0 and self.eval_model and self.step > 0:
-            #     reward, cost, violations =eval_diffusion(self.ema_model, self.dataset,self.args)
-            #     log = {}
-            #     log["reward"]  = reward
-            #     log["cost"] = cost
-            #     log["violations"] = violations
-            #     self.wandb.log(log)
+            if self.step % self.test_freq == 0:
+                # reward, cost, violations =eval_diffusion(self.ema_model, self.dataset,self.args)
+                # log = {}
+                # log["reward"]  = reward
+                # log["cost"] = cost
+                # log["violations"] = violations
+                # self.wandb.log(log)
+
+                log =eval_diffusion(self.ema_model, self.dataset,self.args)
+              
+                self.wandb.log(log)
 
             if self.step % self.log_freq == 0:
                 infos_str = ' | '.join([f'{key}: {val:8.4f}' for key, val in infos.items()])

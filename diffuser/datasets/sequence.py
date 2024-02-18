@@ -60,7 +60,11 @@ class SequenceDataset(torch.utils.data.Dataset):
             each index maps to a datapoint
         '''
         indices = []
+        #if path_lenghts is equal to horizon, then we can start from 0
         for i, path_length in enumerate(path_lengths):
+            if path_length == horizon:
+                indices.append((i, 0, horizon))
+                continue
             max_start = min(path_length - 1, self.max_path_length - horizon)
             if not self.use_padding:
                 max_start = min(max_start, path_length - horizon)

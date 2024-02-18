@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import einops
 from einops.layers.torch import Rearrange
-import pdb
 import numpy as np
 from .helpers import (
     SinusoidalPosEmb,
@@ -13,6 +12,8 @@ from .helpers import (
     PreNorm,
     LinearAttention,
 )
+import math
+from torch.distributions import Bernoulli
 
 
 class ResidualTemporalBlock(nn.Module):
@@ -237,6 +238,47 @@ class ValueFunction(nn.Module):
         out = self.final_block(torch.cat([x, t], dim=-1))
         return out
     
+def create_discrete_matrices(Ts: float, num_moments: int = 4):
+    full_row = np.array([1 / math.factorial(n) * Ts**n for n in range(num_moments)])
+    dm = np.zeros((num_moments, num_moments))
+
+    for idx in range(num_moments):
+        dm[idx, idx:] = full_row[: num_moments - idx]
+
+    db = np.array([1 / math.factorial(n) * Ts**n for n in range(num_moments, 0, -1)])
+
+    return dm, db
+
+class LongDynamics(nn.Module):
+    """Longitudinal dynamics."""
+
+    def __init__(self):
+        """Initialize the LongDynamics module.
+
+        Args:
+            cfg (LongConfig): Configuration for longitudinal dynamics.
+        """
+        super().__init__()
+        self.Ts = 0.2
+        dm, db = create_discrete_matrices(self.Ts, 4)
+        self.register_buffer("dm", torch.tensor(dm, dtype=torch.float32, device="cuda:0"))
+        self.register_buffer("db", torch.tensor(db, dtype=torch.float32, device="cuda:0"))
+
+    def forward(self, x: torch.Tensor, u: torch.Tensor):
+        """Forward pass through the longitudinal dynamics module.
+
+        Args:
+            x (torch.Tensor): Input state tensor.
+            u (torch.Tensor): Input control tensor.
+
+        Returns:
+            torch.Tensor: Output state tensor.
+        """
+        self.dm = self.dm.to(x.device)
+        self.db = self.db.to(x.device)
+        return torch.einsum("bj,ij->bi", x, self.dm) + self.db * u
+
+    
 class ValueFunctionL2(nn.Module):
     def __init__(
         self,
@@ -244,6 +286,8 @@ class ValueFunctionL2(nn.Module):
         transition_dim=16,
         dim=32,
         out_dim=1,
+        cond_dim=2,
+        dim_mults=(1, 2, 4, 8),
     ):
         super().__init__()
         self.horizon = horizon
@@ -251,38 +295,45 @@ class ValueFunctionL2(nn.Module):
         self.dim = dim
         self.out_dim = out_dim
         self.l2 = nn.MSELoss()
+        self.bmw_dynamics = LongDynamics()
     
     def forward(self, x, *args):
         '''
             x : [ batch x horizon x transition ]
             action : [ batch x horizon x action ]
         '''
+        # import pdb; pdb.set_trace()
         x = einops.rearrange(x, 'b h t -> b t h')
         #add action to the transition dim
-        actions = x[:, :, :2]
-        theta = x[:, :, 2]
-        #add action to the transition dim
-        x_add = torch.zeros_like(x)
-        y_add = torch.zeros_like(x)
-        theta_add = torch.zeros_like(x)
+        # actions = x[:, :, :2]
+        # theta = x[:, :, 2]
+        # #add action to the transition dim
+        # x_add = torch.zeros_like(x)
+        # y_add = torch.zeros_like(x)
+        # theta_add = torch.zeros_like(x)
 
-        x_,y_,theta_ = self.dynamics(actions[:,:,0], actions[:,:,1], theta)
-        x_add[:,:,0] = x_
-        y_add[:,:,1] = y_
-        theta_add[:,:,2] = theta_
+        # x_,y_,theta_ = self.dynamics(actions[:,:,0], actions[:,:,1], theta)
+        # x_add[:,:,0] = x_
+        # y_add[:,:,1] = y_
+        # theta_add[:,:,2] = theta_
 
-        x_1 = x + x_add + y_add + theta_add
+        # x_1 = self.bmw_dynamics(x[:,1:5,:], x[:,0,:])
         #calculate the l2 loss for each batch
         diff_batch = []
-        for i in range(len(x)-1):
-            diff_batch.append(-self.l2(x[i+1], x_1[i]))
+        N = x.shape[-1]
+        for i in range(N-1):
+            x_1 = self.bmw_dynamics(x[:,1:5,i], x[:,0,i].unsqueeze(1))
+            diff_batch.append(-self.l2(x[:,:,i+1][:,1:5], x_1[i]))
+        # for i in range(len(x)-1):
+        #     diff_batch.append(-self.l2(x[i+1], x_1[i]))
+        #     import pdb; pdb.set_trace()
         #do this but in one operation
         diff_batch = torch.stack(diff_batch)
         # diff = self.l2(x[:,:,1:], x_1[:,:,:-1])
         return diff_batch
     
     
-    def dynamics(self, force_left, force_right, theta, dt=1, wheelbase=2.5):
+    def dynamics_safe_grid(self, force_left, force_right, theta, dt=1, wheelbase=2.5):
         # Normalize forces to ensure they are between 0 and 1
         max_force = torch.max(torch.abs(force_left), torch.abs(force_right))
         mask = max_force > 0
@@ -300,6 +351,124 @@ class ValueFunctionL2(nn.Module):
         theta = (theta + omega * dt) % (2 * torch.pi)
 
         return x, y, theta
+
+
+
+class MLPnet(nn.Module):
+    def __init__(
+        self,
+        transition_dim,
+        cond_dim,
+        dim=128,
+        dim_mults=(1, 2, 4, 8),
+        horizon=1,
+        returns_condition=True,
+        skills_condition=False,
+        condition_dropout=0.1,
+        calc_energy=False,
+        big_net=False,
+        attention=False,
+    ):
+        super().__init__()
+
+        if calc_energy:
+            act_fn = nn.SiLU()
+        else:
+            act_fn = nn.Mish()
+
+        self.time_dim = dim
+        self.returns_dim = dim
+
+        self.time_mlp = nn.Sequential(
+            SinusoidalPosEmb(dim),
+            nn.Linear(dim, dim * 4),
+            act_fn,
+            nn.Linear(dim * 4, dim),
+        )
+
+        self.returns_condition = returns_condition
+        self.skill_condition = skills_condition
+        self.condition_dropout = condition_dropout
+        self.calc_energy = calc_energy
+        self.transition_dim = transition_dim
+        self.action_dim = transition_dim - cond_dim
+
+        # if self.returns_condition:
+        #     self.returns_mlp = nn.Sequential(
+        #                 nn.Linear(1, dim),
+        #                 act_fn,
+        #                 nn.Linear(dim, dim * 4),
+        #                 act_fn,
+        #                 nn.Linear(dim * 4, dim),
+        #             )
+        #     self.mask_dist = Bernoulli(probs=1-self.condition_dropout)
+        #     embed_dim = 2*dim
+        # elif self.skill_condition:
+        #     self.skills_mlp = nn.Sequential(
+        #                 nn.Linear(1, dim),
+        #                 act_fn,
+        #                 nn.Linear(dim, dim * 4),
+        #                 act_fn,
+        #                 nn.Linear(dim * 4, dim),
+        #             )
+        #     self.mask_dist = Bernoulli(probs=1-self.condition_dropout)
+        #     embed_dim = 2*dim
+        # else:
+        embed_dim = dim
+
+         
+        self.mlp = nn.Sequential(
+                    nn.Linear(embed_dim + transition_dim, 1024),
+                    act_fn,
+                    nn.Linear(1024, 1024),
+                    act_fn,
+                    nn.Linear(1024, 1024),
+                    act_fn,
+                    nn.Linear(1024, 1024),
+                    act_fn,
+                    nn.Linear(1024, self.action_dim),
+                )
+
+    def forward(self, x, cond, time, returns=None, skills=None, use_dropout=True, force_dropout=False):
+        '''
+            x : [ batch x action ]
+            cond: [batch x state]
+            returns : [batch x 1]
+        '''
+        # Assumes horizon = 1
+        t = self.time_mlp(time)
+
+        # if self.returns_condition:
+        #     assert returns is not None
+        #     returns_embed = self.returns_mlp(returns)
+        #     if use_dropout:
+        #         mask = self.mask_dist.sample(sample_shape=(returns_embed.size(0), 1)).to(returns_embed.device)
+        #         returns_embed = mask*returns_embed
+        #     if force_dropout:
+        #         returns_embed = 0*returns_embed
+ 
+        #     t = torch.cat([t, returns_embed], dim=-1)
+
+        
+        # elif self.skill_condition:
+        #     assert skills is not None
+        #     skills_embed = self.skills_mlp(skills)
+        #     if use_dropout:
+        #         mask = self.mask_dist.sample(sample_shape=(skills_embed.size(0), 1)).to(skills_embed.device)
+        #         skills_embed = mask*skills_embed
+        #     if force_dropout:
+        #         skills_embed = 0*skills_embed
+        #     t = torch.cat([t, skills_embed], dim=-1)
+
+        inp = torch.cat([t, cond, x], dim=-1)
+        out  = self.mlp(inp)
+
+        if self.calc_energy:
+            energy = ((out - x) ** 2).mean()
+            grad = torch.autograd.grad(outputs=energy, inputs=x, create_graph=True)
+            return grad[0]
+        else:
+            return out
 
 class ValueFunctionH400(nn.Module):
 

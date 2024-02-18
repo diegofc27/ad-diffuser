@@ -2,6 +2,12 @@ import diffuser.utils as utils
 import torch
 import wandb
 
+
+def cycle(dl):
+    while True:
+        for data in dl:
+            yield data
+
 #-----------------------------------------------------------------------------#
 #----------------------------------- setup -----------------------------------#
 #-----------------------------------------------------------------------------#
@@ -10,18 +16,18 @@ class Parser(utils.Parser):
     dataset: str = 'hopper-medium-expert-v2'
     config: str = 'config.locomotion'
 
-args = Parser().parse_args('diffusion-bmw')
+args = Parser().parse_args('diffusion-action-bmw')
 print("batch size: ",args.batch_size)
 #start a new wandb run to track this script
-# wandb.init(
-#     # set the wandb project where this run will be logged
-#     project="thesis",
-#     entity="diegofc77",
-#     group=args.run_group,
-#     name=args.run_name,
-#     # track hyperparameters and run metadata
-#     config=args
-# )
+wandb.init(
+    # set the wandb project where this run will be logged
+    project="thesis",
+    entity="diegofc77",
+    group=args.run_group,
+    name=args.run_name,
+    # track hyperparameters and run metadata
+    config=args
+)
 #-----------------------------------------------------------------------------#
 #---------------------------------- dataset ----------------------------------#
 #-----------------------------------------------------------------------------#
@@ -82,6 +88,7 @@ diffusion_config = utils.Config(
     loss_discount=args.loss_discount,
     device=args.device,
     equal_weight=args.equal_weight,
+    equal_action_weight=args.equal_action_weight,
 )
 
 trainer_config = utils.Config(
@@ -123,7 +130,6 @@ print('Testing forward...', end=' ', flush=True)
 batch = utils.batchify(dataset[0])
 loss, _ = diffusion.loss(*batch)
 loss.backward()
-import pdb; pdb.set_trace()
 print('✓')
 #-----------------------------------------------------------------------------#
 #--------------------------------- main loop ---------------------------------#

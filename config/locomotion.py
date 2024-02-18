@@ -123,9 +123,10 @@ base = {
         'diffusion': 'models.GaussianDiffusion',
         'horizon': 32,
         'n_diffusion_steps': 20,
-        'action_weight': 10,
+        'action_weight': 2,
         'loss_weights': None,
         'loss_discount': 1,
+        'equal_action_weight':True,
         'predict_epsilon': False,
         'dim_mults': (1, 2, 4, 8),
         'attention': False,
@@ -135,16 +136,16 @@ base = {
         ## dataset
         'loader': 'datasets.SequenceDataset',
         'normalizer': 'GaussianNormalizer',
-        'use_normalizer': False,
+        'use_normalizer': True,
         'preprocess_fns': [],
         'clip_denoised': False,
         'use_padding': True,
-        'max_path_length': 50,
+        'max_path_length': 32,
         'context_len': 100,
 
         ## serialization
         'logbase': logbase,
-        'prefix': 'diffusion/defaults',
+        'prefix': 'diffusion/delta',
         'exp_name': watch(args_to_watch),
 
         ## training
@@ -165,6 +166,58 @@ base = {
         'seed': None,
 
         'run_name': 'diffusion-bmw',
+        'run_group': 'thesis',
+    },
+
+    'diffusion-action-bmw': {
+        ## model
+        'model': 'models.MLPnet',
+        'diffusion': 'models.ActionGaussianDiffusion',
+        'horizon': 1,
+        'n_diffusion_steps': 20,
+        'action_weight': 1,
+        'loss_weights': None,
+        'loss_discount': 1,
+        'equal_action_weight':True,
+        'predict_epsilon': False,
+        'dim_mults': (1, 2, 4, 8),
+        'attention': False,
+        'renderer': 'utils.MuJoCoRenderer',
+        'equal_weight': False,
+
+        ## dataset
+        'loader': 'datasets.SequenceDataset',
+        'normalizer': 'GaussianNormalizer',
+        'use_normalizer': True,
+        'preprocess_fns': [],
+        'clip_denoised': False,
+        'use_padding': True,
+        'max_path_length': 32,
+        'context_len': 100,
+
+        ## serialization
+        'logbase': logbase,
+        'prefix': 'diffusion/action',
+        'exp_name': watch(args_to_watch),
+
+        ## training
+        'n_steps_per_epoch': 10000,
+        'loss_type': 'l2',
+        'n_train_steps': 100000,
+        'batch_size': 256,
+        'learning_rate': 2e-4,
+        'gradient_accumulate_every': 2,
+        'ema_decay': 0.995,
+        'save_freq': 2000,
+        'sample_freq': 20000,
+        'n_saves': 5,
+        'save_parallel': False,
+        'n_reference': 8,
+        'bucket': None,
+        'device': 'cuda:0',
+        'seed': None,
+
+        'run_name': 'diffusion-action-bmw',
         'run_group': 'thesis',
     },
 
@@ -459,6 +512,52 @@ base = {
         'run_group': 'values',
     },
 
+    'values_static_l2_bmw': {
+        'model': 'models.ValueFunctionL2',
+        'diffusion': 'models.ValueDiffusion',
+        'horizon': 1,
+        'n_diffusion_steps': 20,
+        'dim_mults': (1, 2, 4, 8, 16),
+        'renderer': 'utils.MuJoCoRenderer',
+
+        ## value-specific kwargs
+        'discount': 0.99,
+        'termination_penalty': 0,
+        'normed': False,
+
+        ## dataset
+        'loader': 'datasets.ValueDataset',
+        'normalizer': 'GaussianNormalizer',
+        'preprocess_fns': [],
+        'use_padding': True,
+        'max_path_length': 32,
+
+        ## serialization
+        'logbase': logbase,
+        'prefix': 'values/defaults',
+        'exp_name': watch(args_to_watch),
+
+        ## training
+        'n_steps_per_epoch': 10000,
+        'loss_type': 'value_l2',
+        'n_train_steps': 200e3,
+        'batch_size': 512,
+        'learning_rate': 1e-3, #2e-4,
+        'gradient_accumulate_every': 2,
+        'ema_decay': 0.995,
+        'save_freq': 2000,
+        'sample_freq': 0,
+        'n_saves': 5,
+        'save_parallel': False,
+        'n_reference': 8,
+        'bucket': None,
+        'device': 'cuda:0',
+        'seed': None,
+
+        'run_name': 'bmw_values',
+        'run_group': 'values',
+    },
+
     'plan': {
         'guide': 'sampling.ValueGuide',
         'policy': 'sampling.GuidedPolicy',
@@ -525,6 +624,57 @@ base = {
 
         ## diffusion model
         'horizon': 16,
+        'n_diffusion_steps': 20,
+
+        ## value function
+        'discount': 0.99,
+
+        ## loading
+        'diffusion_loadpath': 'f:diffusion/defaults_H{horizon}_T{n_diffusion_steps}',
+        'value_loadpath': 'f:values/defaults_H{horizon}_T{n_diffusion_steps}_d{discount}',
+
+        'diffusion_epoch': 'latest',
+        'value_epoch': 'latest',
+
+        'verbose': True,
+        'suffix': '0',
+    },
+
+    'plan_l2_bmw': {
+        'guide': 'sampling.ValueGuide',
+        'policy': 'sampling.GuidedPolicy',
+        'max_episode_length': 32,
+        'batch_size': 64,
+        'preprocess_fns': [],
+        'device': 'cuda:2',
+        'seed': None,
+
+        ## sample_kwargs
+        'n_guide_steps': 2,
+        'scale': 0.1,
+        't_stopgrad': 2,
+        'scale_grad_by_std': True,
+
+        ## serialization
+        'loadbase': None,
+        'logbase': logbase,
+        'prefix': 'plans/',
+        'exp_name': watch(args_to_watch),
+        'vis_freq': 100,
+        'max_render': 8,
+
+        #dataset
+        'loader': 'datasets.SequenceDataset',
+        'normalizer': 'GaussianNormalizer',
+        'use_normalizer': True,
+        'preprocess_fns': [],
+        'clip_denoised': False,
+        'use_padding': True,
+        'max_path_length': 32,
+        'context_len': 100,
+
+        ## diffusion model
+        'horizon': 32,
         'n_diffusion_steps': 20,
 
         ## value function

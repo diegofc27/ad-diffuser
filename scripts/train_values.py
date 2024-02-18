@@ -13,7 +13,7 @@ class Parser(utils.Parser):
 
 
 
-args = Parser().parse_args('values_cost')
+args = Parser().parse_args('values_static_l2_bmw')
 
 
 wandb.init(

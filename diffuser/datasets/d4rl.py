@@ -42,13 +42,14 @@ def load_environment(name):
     elif name == 'Safe_Grid-v0':
         env = Safe_Grid()
         return env
-    elif name == 'BMW-v0':
+    elif name == 'BMW-v0' or name == 'BMW-v0_test':
         class BMWEnv(gym.Env):
             def __init__(self):
                 self.action_space = gym.spaces.Box(-1, 1, (2,))
                 self.observation_space = gym.spaces.Box(-1, 1, (4,))
-                self.max_episode_steps = 30
-                self.name = 'BMW-v0'
+                self.max_episode_steps = 32
+                self._max_episode_steps = 32
+                self.name = name
             def reset(self):
                 return np.zeros(4)
             def step(self, action):
@@ -71,8 +72,12 @@ def get_dataset(env):
             dataset = pickle.load(handle)
             print("loaded pickle")
     elif env.name == 'BMW-v0':
-        with open('/home/fernandi/projects/diffuser/trajectories/bmw_train.pkl', 'rb') as handle:
+        with open('/home/fernandi/projects/diffuser/trajectories/bmw_norm_train.pkl', 'rb') as handle:
             dataset = pickle.load(handle)
+    elif env.name == 'BMW-v0_test':
+        with open('/home/fernandi/projects/diffuser/trajectories/bmw_norm_test.pkl', 'rb') as handle:
+            dataset = pickle.load(handle)
+    
     elif env.name == 'SafeGrid-v1' or env.name == 'Safe_Grid_Simple-v0':
          with open('/home/fernandi/projects/decision-diffuser/code/trajectories/safe_grid_v1_5000__rate_0.93.pickle', 'rb') as handle:
             dataset = pickle.load(handle)
@@ -120,25 +125,32 @@ def sequence_dataset(env, preprocess_fn):
     # The newer version of the dataset adds an explicit
     # timeouts field. Keep old method for backwards compatability.
     use_timeouts = 'timeouts' in dataset
-
+    c = 0
     episode_step = 0
     idx = 0
     idx2= 0
     for i in range(N):
+        # print("i",i)
+        # print("c ",c)
+        # c+=1
+        
         done_bool = bool(dataset['terminals'][i])
         
+
         if use_timeouts:
             final_timestep = dataset['timeouts'][i]
             #print("final",final_timestep )
         else:
+            final_timestep = False
             #final_timestep = (episode_step == env._max_episode_steps - 1)
-            final_timestep = (episode_step == 30 - 1)
+            # final_timestep = (episode_step == env._max_episode_steps)
+            # print("final",final_timestep, "episode step", i) 
+            
         for k in dataset:
             if 'metadata' in k: continue
             data_[k].append(dataset[k][i])
         #if done_bool:
         if done_bool or final_timestep:
-            
             episode_step = 0
             episode_data = {}
             for k in data_:
