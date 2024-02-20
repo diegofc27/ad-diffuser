@@ -16,7 +16,7 @@ class Parser(utils.Parser):
     dataset: str = 'hopper-medium-expert-v2'
     config: str = 'config.locomotion'
 
-args = Parser().parse_args('diffusion-action-bmw')
+args = Parser().parse_args('diffusion-action-stateLoss-bmw')
 print("batch size: ",args.batch_size)
 #start a new wandb run to track this script
 wandb.init(
@@ -89,6 +89,7 @@ diffusion_config = utils.Config(
     device=args.device,
     equal_weight=args.equal_weight,
     equal_action_weight=args.equal_action_weight,
+    normalizer=dataset.normalizer
 )
 
 trainer_config = utils.Config(
@@ -106,7 +107,9 @@ trainer_config = utils.Config(
     bucket=args.bucket,
     n_reference=args.n_reference,
     args=args,
-    eval_model=True
+    eval_model=True,
+    log_freq=args.log_freq,
+    test_freq=args.test_freq,
 
 )
 

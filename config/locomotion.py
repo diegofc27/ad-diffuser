@@ -39,6 +39,7 @@ base = {
         'clip_denoised': False,
         'use_padding': True,
         'max_path_length': 1000,
+        'log_freq': 100,
 
         ## serialization
         'logbase': logbase,
@@ -98,6 +99,7 @@ base = {
 
         ## training
         'n_steps_per_epoch': 10000,
+        'log_freq': 100,
         'loss_type': 'l2',
         'n_train_steps': 1e6,
         'batch_size': 32,
@@ -158,6 +160,7 @@ base = {
         'ema_decay': 0.995,
         'save_freq': 2000,
         'sample_freq': 20000,
+        'log_freq': 100,
         'n_saves': 5,
         'save_parallel': False,
         'n_reference': 8,
@@ -210,6 +213,7 @@ base = {
         'ema_decay': 0.995,
         'save_freq': 2000,
         'sample_freq': 20000,
+        'log_freq': 100,
         'n_saves': 5,
         'save_parallel': False,
         'n_reference': 8,
@@ -218,6 +222,60 @@ base = {
         'seed': None,
 
         'run_name': 'diffusion-action-bmw',
+        'run_group': 'thesis',
+    },
+
+    'diffusion-action-stateLoss-bmw': {
+        ## model
+        'model': 'models.MLPnet',
+        'diffusion': 'models.ActionGaussianDiffusion',
+        'horizon': 10,
+        'n_diffusion_steps': 20,
+        'action_weight': 1,
+        'loss_weights': None,
+        'loss_discount': 1,
+        'equal_action_weight':True,
+        'predict_epsilon': False,
+        'dim_mults': (1, 2, 4, 8),
+        'attention': False,
+        'renderer': 'utils.MuJoCoRenderer',
+        'equal_weight': False,
+
+        ## dataset
+        'loader': 'datasets.SequenceDataset',
+        'normalizer': 'GaussianNormalizer',
+        'use_normalizer': True,
+        'preprocess_fns': [],
+        'clip_denoised': False,
+        'use_padding': True,
+        'max_path_length': 32,
+        'context_len': 100,
+
+        ## serialization
+        'logbase': logbase,
+        'prefix': 'diffusion/action',
+        'exp_name': watch(args_to_watch),
+
+        ## training
+        'n_steps_per_epoch': 10000,
+        'loss_type': 'l2',
+        'n_train_steps': 100000,
+        'log_freq': 10,
+        'batch_size': 256,
+        'learning_rate': 2e-4,
+        'gradient_accumulate_every': 2,
+        'ema_decay': 0.995,
+        'save_freq': 2000,
+        'sample_freq': 20000,
+        'test_freq': 100,
+        'n_saves': 5,
+        'save_parallel': False,
+        'n_reference': 8,
+        'bucket': None,
+        'device': 'cuda:0',
+        'seed': None,
+
+        'run_name': 'diffusion-action-stateLoss-bmw',
         'run_group': 'thesis',
     },
 
@@ -259,6 +317,7 @@ base = {
         'batch_size': 256,
         'learning_rate': 2e-4,
         'gradient_accumulate_every': 2,
+        'log_freq': 100,
         'ema_decay': 0.995,
         'save_freq': 2000,
         'sample_freq': 20000,

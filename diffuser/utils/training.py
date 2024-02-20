@@ -108,6 +108,7 @@ class Trainer(object):
 
         timer = Timer()
         for step in range(n_train_steps):
+            
             for i in range(self.gradient_accumulate_every):
                 batch = next(self.dataloader)
                 #import pdb; pdb.set_trace()
@@ -129,7 +130,7 @@ class Trainer(object):
                 label = self.step // self.label_freq * self.label_freq
                 self.save(self.step)
 
-            if self.step % self.test_freq == 0:
+            if self.step % self.test_freq == 0 and self.step > 0:
                 # reward, cost, violations =eval_diffusion(self.ema_model, self.dataset,self.args)
                 # log = {}
                 # log["reward"]  = reward
@@ -138,8 +139,8 @@ class Trainer(object):
                 # self.wandb.log(log)
 
                 log =eval_diffusion(self.ema_model, self.dataset,self.args)
-              
-                self.wandb.log(log)
+                if self.wandb is not None:
+                    self.wandb.log(log)
 
             if self.step % self.log_freq == 0:
                 infos_str = ' | '.join([f'{key}: {val:8.4f}' for key, val in infos.items()])
@@ -148,7 +149,8 @@ class Trainer(object):
                 for key, val in infos.items():
                     log[key] = val
                 log["loss"] = loss
-                self.wandb.log(log)
+                if self.wandb is not None:
+                    self.wandb.log(log)
 
             # if self.step == 0 and self.sample_freq:
             #     self.render_reference(self.n_reference)

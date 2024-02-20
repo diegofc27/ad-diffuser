@@ -11,7 +11,7 @@ from .helpers import (
     apply_conditioning_all,
     Losses,
 )
-
+from .temporal import LongDynamics
 
 Sample = namedtuple('Sample', 'trajectories values chains')
 
@@ -28,6 +28,16 @@ def default_sample_fn(model, x, cond, t):
     values = torch.zeros(len(x), device=x.device)
     return model_mean + model_std * noise, values
 
+def grad_default_sample_fn(model, x, cond, t):
+    model_mean, _, model_log_variance = model.p_mean_variance(x=x, cond=cond, t=t)
+    model_std = torch.exp(0.5 * model_log_variance)
+
+    # no noise when t == 0
+    noise = torch.randn_like(x)
+    noise[t == 0] = 0
+
+    values = torch.zeros(len(x), device=x.device)
+    return model_mean + model_std * noise, values
 
 def sort_by_values(x, values):
     inds = torch.argsort(values, descending=True)
@@ -44,7 +54,8 @@ def make_timesteps(batch_size, i, device):
 class GaussianDiffusion(nn.Module): 
     def __init__(self, model, horizon, observation_dim, action_dim, n_timesteps=1000,
         loss_type='l1', clip_denoised=False, predict_epsilon=True,
-        action_weight=1.0, loss_discount=1.0, loss_weights=None, equal_weight=False, equal_action_weight=False
+        action_weight=1.0, loss_discount=1.0, loss_weights=None, equal_weight=False, equal_action_weight=False,
+        normalizer=None
     ):
         super().__init__()
         self.horizon = horizon
@@ -52,6 +63,7 @@ class GaussianDiffusion(nn.Module):
         self.action_dim = action_dim
         self.transition_dim = observation_dim + action_dim
         self.model = model
+        self.normalizer = normalizer
 
         betas = cosine_beta_schedule(n_timesteps)
         alphas = 1. - betas
@@ -242,7 +254,7 @@ class GaussianDiffusion(nn.Module):
 class ActionGaussianDiffusion(nn.Module): 
     def __init__(self, model, horizon, observation_dim, action_dim, n_timesteps=1000,
         loss_type='l1', clip_denoised=False, predict_epsilon=True,
-        action_weight=1.0, loss_discount=1.0, loss_weights=None, equal_weight=False, equal_action_weight=False
+        action_weight=1.0, loss_discount=1.0, loss_weights=None, equal_weight=False, equal_action_weight=False, normalizer=None
     ):
         super().__init__()
         self.horizon = horizon
@@ -250,6 +262,7 @@ class ActionGaussianDiffusion(nn.Module):
         self.action_dim = action_dim
         self.transition_dim = observation_dim + action_dim
         self.model = model
+        self.normalizer = normalizer
 
         betas = cosine_beta_schedule(n_timesteps)
         alphas = 1. - betas
@@ -385,6 +398,30 @@ class ActionGaussianDiffusion(nn.Module):
         if return_chain: chain = torch.stack(chain, dim=1)
         return Sample(x, values, chain)
     
+    def grad_p_sample_loop(self, shape, cond, verbose=True, return_chain=False, sample_fn=grad_default_sample_fn, **sample_kwargs):
+        device = self.betas.device
+
+        batch_size = shape[0]
+        x = torch.randn(shape, device=device)
+        # x = apply_conditioning(x, cond, self.action_dim)
+
+        chain = [x] if return_chain else None
+
+        #progress = utils.Progress(self.n_timesteps) if verbose else utils.Silent()
+        for i in reversed(range(0, self.n_timesteps)):
+            t = make_timesteps(batch_size, i, device)
+            x, values = sample_fn(self, x, cond, t, **sample_kwargs)
+            # x = apply_conditioning(x, cond, self.action_dim)
+
+            #progress.update({'t': i, 'vmin': values.min().item(), 'vmax': values.max().item()})
+            if return_chain: chain.append(x)
+
+       # progress.stamp()
+
+        x, values = sort_by_values(x, values)
+        if return_chain: chain = torch.stack(chain, dim=1)
+        return Sample(x, values, chain)
+
     @torch.no_grad()
     def conditional_sample(self, cond, **sample_kwargs):
         '''
@@ -396,6 +433,16 @@ class ActionGaussianDiffusion(nn.Module):
         cond = cond[0]
         return self.p_sample_loop(shape, cond, **sample_kwargs)
 
+
+    def grad_conditional_sample(self, cond, **sample_kwargs):
+        '''
+            conditions : [ (time, state), ... ]
+        '''
+        device = self.betas.device
+        batch_size = len(cond[0])
+        shape = (batch_size, self.action_dim)
+        cond = cond[0]
+        return self.grad_p_sample_loop(shape, cond, **sample_kwargs)
     #------------------------------------------ training ------------------------------------------#
 
     def q_sample(self, x_start, t, noise=None): 
@@ -410,7 +457,7 @@ class ActionGaussianDiffusion(nn.Module):
 
         return sample
 
-    def p_losses(self, action_start, state, t):
+    def p_losses(self, action_start, state, t,  target_states, target_actions, *args):
         noise = torch.randn_like(action_start)
         action_noisy = self.q_sample(x_start=action_start, t=t, noise=noise)
 
@@ -419,20 +466,77 @@ class ActionGaussianDiffusion(nn.Module):
         assert noise.shape == pred_action.shape
 
         if self.predict_epsilon:
-            loss = F.mse_loss(pred_action, noise)
+            diffusion_loss = F.mse_loss(pred_action, noise)
         else:
-            loss = F.mse_loss(pred_action, action_start)
+            diffusion_loss = F.mse_loss(pred_action, action_start)
 
-        return loss, {'a0_loss':loss}
+        #predict next state with dynamics model
+        sample_kwargs ={}
+        horizon = target_states.shape[1]
+        dynamics =  LongDynamics()
+        predicted_states = []
+        predicted_actions = []
 
+        observation_stds = torch.tensor(self.normalizer.normalizers["observations"].stds, device=state.device)
+        observation_means = torch.tensor(self.normalizer.normalizers["observations"].means, device=state.device)
+        action_stds = torch.tensor(self.normalizer.normalizers["actions"].stds, device=state.device)
+        action_means = torch.tensor(self.normalizer.normalizers["actions"].means, device=state.device)
+
+        target_actions = target_actions * action_stds + action_means
+        dyn_state = target_states[:,:,4:]
+        state = state[:,0:4]
+        
+        for idx in range(horizon):
+            state = torch.cat((state, dyn_state[:, idx]), dim=1)
+            next_action_pred = self.grad_conditional_sample(state.unsqueeze(0), verbose=False, **sample_kwargs)
+            unnorm_states = state * observation_stds + observation_means
+            unnorm_actions = next_action_pred.trajectories * action_stds + action_means
+            predicted_actions.append(unnorm_actions)
+            state = dynamics(unnorm_states[:,0:4], unnorm_actions)
+
+            # print(f"state {state}, action {next_action_pred.trajectories}")
+            predicted_states.append(state)
+            state = (state - observation_means[0:4]) / observation_stds[0:4]
+
+        predicted_actions = torch.stack(predicted_actions)
+        predicted_actions = predicted_actions.permute(1,0,2)
+        predicted_states = torch.stack(predicted_states)
+        predicted_states = predicted_states.permute(1,0,2)
+        target_states = target_states * observation_stds + observation_means
+        target_states = target_states[:,:,0:4]
+        min_pred_action = torch.min(predicted_actions)
+        max_pred_action = torch.max(predicted_actions)
+        min_target_action = torch.min(target_actions)
+        max_target_action = torch.max(target_actions)
+        state_loss = F.mse_loss(predicted_states, target_states, reduction='mean')
+         
+        action_loss = F.mse_loss(predicted_actions, target_actions, reduction='mean')
+        info = {'diffusion_loss':diffusion_loss, 'state_loss':state_loss, 'action_loss':action_loss, 'min_pred_action':min_pred_action, 'min_target_action':min_target_action, 'max_pred_action':max_pred_action,  'max_target_action':max_target_action}
+        loss = diffusion_loss + state_loss
+        return loss, info
+
+
+    # def loss(self, x, *args):
+    #     batch_size = len(x)
+    #     t = torch.randint(0, self.n_timesteps, (batch_size,), device=x.device).long()
+    #     assert x.shape[1] == 1 # Assumes horizon=1
+    #     x = x[:,0,:]
+    #     cond = x[:,self.action_dim:] # Observation
+    #     x = x[:,:self.action_dim] # Action
+    #     return self.p_losses(x, cond, t)
+    
     def loss(self, x, *args):
         batch_size = len(x)
         t = torch.randint(0, self.n_timesteps, (batch_size,), device=x.device).long()
-        assert x.shape[1] == 1 # Assumes horizon=1
+        # assert x.shape[1] == 1 # Assumes horizon=1
+        x_1 = x[:,:,self.action_dim:] # x_1 is the next state
+        actions = x[:,:,:self.action_dim] # Action
         x = x[:,0,:]
+#        x_1 = x[:,1,:]
         cond = x[:,self.action_dim:] # Observation
         x = x[:,:self.action_dim] # Action
-        return self.p_losses(x, cond, t)
+        
+        return self.p_losses(x, cond, t, x_1, actions)
 
     def forward(self, cond, *args, **kwargs):
         return self.conditional_sample(cond, *args, **kwargs)

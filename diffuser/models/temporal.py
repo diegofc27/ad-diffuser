@@ -459,7 +459,6 @@ class MLPnet(nn.Module):
         #     if force_dropout:
         #         skills_embed = 0*skills_embed
         #     t = torch.cat([t, skills_embed], dim=-1)
-
         inp = torch.cat([t, cond, x], dim=-1)
         out  = self.mlp(inp)
 
