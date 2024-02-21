@@ -28,7 +28,7 @@ def eval_diffusion(diffusion, dataset, args):
     #-------------------------------- test dataset -------------------------------#
     #-----------------------------------------------------------------------------#
     dataset_name =args.dataset + "_test"
-    horizon = 32
+    horizon = args.horizon
     dataset_config = utils.Config(
        'datasets.SequenceDataset',
         savepath=(args.savepath, 'dataset_config.pkl'),
@@ -58,7 +58,7 @@ def eval_diffusion(diffusion, dataset, args):
     total_delta_j = 0
     total_delta_actions= 0
     frames = []
-    eval_episodes = 200
+    eval_episodes = 30
     total_l2 = 0
     max_l2 = -np.inf
 
@@ -103,6 +103,7 @@ def eval_diffusion(diffusion, dataset, args):
                 f'batch: {t} | current l2: {l2:.2f} |  delta_s: {s_delta:.2f} | mean l2: {mean_l2:.2f} | max l2: {current_max_l2:.2f} |',
                 flush=True,
             )
+            import pdb; pdb.set_trace()
         print("pred_observation s: ",pred_observation[:,0])
         print("target_observation s: ",target_observation[:,0])
 
@@ -115,7 +116,7 @@ def eval_diffusion(diffusion, dataset, args):
             "j_delta": total_delta_j / eval_episodes,
             "action_delta": total_delta_actions / eval_episodes,
         }
-
+        import pdb; pdb.set_trace()
         return info
     
     elif diffusion.__class__.__name__ == 'ActionGaussianDiffusion':

@@ -42,7 +42,7 @@ def load_environment(name):
     elif name == 'Safe_Grid-v0':
         env = Safe_Grid()
         return env
-    elif name == 'BMW-v0' or name == 'BMW-v0_test':
+    elif name == 'BMW-v0' or name == 'BMW-v0_test' or name == 'BMW-v0_3l' or name == 'BMW-v0_3l_test':
         class BMWEnv(gym.Env):
             def __init__(self):
                 self.action_space = gym.spaces.Box(-1, 1, (2,))
@@ -76,6 +76,12 @@ def get_dataset(env):
             dataset = pickle.load(handle)
     elif env.name == 'BMW-v0_test':
         with open('/home/fernandi/projects/diffuser/trajectories/bmw_norm_test.pkl', 'rb') as handle:
+            dataset = pickle.load(handle)
+    elif env.name == 'BMW-v0_3l':
+        with open('/home/fernandi/projects/diffuser/trajectories/bmw_train_3leader.pkl', 'rb') as handle:
+            dataset = pickle.load(handle)
+    elif env.name == 'BMW-v0_3l_test':
+        with open('/home/fernandi/projects/diffuser/trajectories/bmw_test_3leader.pkl', 'rb') as handle:
             dataset = pickle.load(handle)
     
     elif env.name == 'SafeGrid-v1' or env.name == 'Safe_Grid_Simple-v0':

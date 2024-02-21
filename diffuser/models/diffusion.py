@@ -235,9 +235,9 @@ class GaussianDiffusion(nn.Module):
         x_recon = apply_conditioning(x_recon, cond, self.action_dim)
 
         assert noise.shape == x_recon.shape
-
         if self.predict_epsilon:
             loss, info = self.loss_fn(x_recon, noise)
+            print(f"predict epsilon")
         else:
             loss, info = self.loss_fn(x_recon, x_start)
 
