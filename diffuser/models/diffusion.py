@@ -55,7 +55,7 @@ class GaussianDiffusion(nn.Module):
     def __init__(self, model, horizon, observation_dim, action_dim, n_timesteps=1000,
         loss_type='l1', clip_denoised=False, predict_epsilon=True,
         action_weight=1.0, loss_discount=1.0, loss_weights=None, equal_weight=False, equal_action_weight=False,
-        normalizer=None
+        normalizer=None, multiple_shooting=False
     ):
         super().__init__()
         self.horizon = horizon
@@ -73,6 +73,7 @@ class GaussianDiffusion(nn.Module):
         self.n_timesteps = int(n_timesteps)
         self.clip_denoised = clip_denoised
         self.predict_epsilon = predict_epsilon
+        self.multiple_shooting = multiple_shooting
 
         self.register_buffer('betas', betas)
         self.register_buffer('alphas_cumprod', alphas_cumprod)
@@ -183,7 +184,7 @@ class GaussianDiffusion(nn.Module):
         x = apply_conditioning(x, cond, self.action_dim)
 
         chain = [x] if return_chain else None
-
+        
         progress = utils.Progress(self.n_timesteps) if verbose else utils.Silent()
         for i in reversed(range(0, self.n_timesteps)):
             t = make_timesteps(batch_size, i, device)
@@ -241,6 +242,42 @@ class GaussianDiffusion(nn.Module):
         else:
             loss, info = self.loss_fn(x_recon, x_start)
 
+        if self.multiple_shooting:
+            sample_kwargs ={}
+            horizon = x_recon.shape[1]
+            dynamics =  LongDynamics()
+            predicted_states = []
+            predicted_actions = []
+            actions = x_recon[:,:,0:self.action_dim]
+            states = x_recon[:,:,self.action_dim:5]
+
+            observation_stds = torch.tensor(self.normalizer.normalizers["observations"].stds, device=x_recon.device)
+            observation_means = torch.tensor(self.normalizer.normalizers["observations"].means, device=x_recon.device)
+            action_stds = torch.tensor(self.normalizer.normalizers["actions"].stds, device=x_recon.device)
+            action_means = torch.tensor(self.normalizer.normalizers["actions"].means, device=x_recon.device)
+
+            unnorm_actions = actions * action_stds + action_means
+            unnorm_states = states * observation_stds[0:4] + observation_means[0:4]
+
+            
+            
+            for idx in range(horizon):
+                state = dynamics(unnorm_states[:,idx], unnorm_actions[:,idx])
+                #print(f"state {state}, action {next_action_pred.trajectories}")
+                # state = (state - observation_means[0:4]) / observation_stds[0:4]
+                predicted_states.append(state)
+            predicted_states = torch.stack(predicted_states)
+            predicted_states = predicted_states.permute(1,0,2)
+            target_states = unnorm_states[:,1:]
+           
+            # print(predicted_states[0,:,0])
+            # print(target_states[0,:,0])
+            # print("-------------------------------------")
+            shooting_loss = F.mse_loss(predicted_states[:,:-1,:], target_states, reduction='mean')
+            info['shooting_loss'] = shooting_loss
+
+            loss = loss + (.2) *shooting_loss
+                
         return loss, info
 
     def loss(self, x, *args):

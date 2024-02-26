@@ -90,6 +90,7 @@ class GuidedPolicyL2:
         observations = self.normalizer.unnormalize(normed_observations, 'observations')
 
         trajectories = Trajectories(actions, observations, samples.values)
+       
         return action, trajectories
 
     @property
@@ -179,6 +180,7 @@ class NonGuidedContextPolicy(GuidedPolicy):
         observations = self.normalizer.unnormalize(normed_observations, 'observations')
 
         trajectories = Trajectories(actions, observations, samples.values)
+        
         return action, trajectories
 
    
@@ -227,8 +229,13 @@ class NonGuidedPolicy(GuidedPolicy):
 
             normed_observations = trajectories[:, :, self.action_dim:]
             observations = self.normalizer.unnormalize(normed_observations, 'observations')
-
+            
             trajectories = Trajectories(actions, observations, samples.values)
+
+            if samples.chains is not None:
+                chains = samples.chains[0][:,:,self.action_dim:]
+                chains = self.normalizer.unnormalize(chains.cpu(), 'observations')
+                return action, trajectories, chains
 
             return actions, trajectories
         elif self.diffusion_model.__class__.__name__ == 'ActionGaussianDiffusion':

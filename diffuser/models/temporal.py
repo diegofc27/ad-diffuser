@@ -519,10 +519,11 @@ class DynNet(nn.Module):
         self.sec_const_acc=sec_const_acc
         self.v_max=v_max
         self.Ts = Ts
-        self.lead_dim = 3
+        self.lead_dim = 2
         self.horizon = horizon
         embed_dim = dim
         self.normalizer = normalizer
+        self.p_const_dim =4
         
         self.observation_stds = torch.tensor(self.normalizer.normalizers["observations"].stds, device="cuda:0")
         self.observation_means = torch.tensor(self.normalizer.normalizers["observations"].means, device="cuda:0")
@@ -530,8 +531,9 @@ class DynNet(nn.Module):
         self.action_means = torch.tensor(self.normalizer.normalizers["actions"].means, device="cuda:0")
 
         self.index_dim = 1
+        self.state_dim = 10
         self.mlp = nn.Sequential(
-                    nn.Linear(embed_dim + (transition_dim*2) + self.index_dim - self.action_dim, 1024),
+                    nn.Linear(embed_dim  + self.state_dim + self.transition_dim +self.index_dim, 1024),
                     act_fn,
                     nn.Linear(1024, 1024),
                     act_fn,
@@ -594,59 +596,7 @@ class DynNet(nn.Module):
         predictions = (predictions - self.observation_means[self.x_dim:self.x_dim+self.lead_dim]) / self.observation_stds[self.x_dim:self.x_dim+self.lead_dim]
         return predictions
 
-    def simple_forward_prediction_batch(
-        self,
-        long_states: torch.Tensor,
-        
-    ) -> torch.Tensor:
-        """A simple longitudinal trajectory prediction adopted from BMW
-        codebase.
-
-        Args:
-            long_states: The current states of the vehicles in the batch, shaped as (batch_size, 3) where 3 corresponds to [s, v, a].
-        Returns:
-            A tensor of shape (batch_size, horizon + 1, 3) with columns [s, v, a].
-        """
-
-        # Unnormalize
-        long_states = long_states * self.observation_stds[self.x_dim:self.x_dim+self.lead_dim] + self.observation_means[self.x_dim:self.x_dim+self.lead_dim]
-
-        # Constants
-        num_steps_const_acc = self.sec_const_acc / self.Ts
-
-        # Initialize predictions tensor
-        batch_size = long_states.size(0)
-        predictions = torch.zeros(batch_size, self.horizon + 1, 3, device=long_states.device)
-        predictions[:, 0, :] = long_states
-
-        # Rollout
-        for i in range(1, self.horizon + 1):
-            a = torch.where(i > num_steps_const_acc, 
-                            torch.tensor(0.0, device=long_states.device), 
-                            predictions[:, i - 1, 2])  # Choose 0.0 if i > num_steps_const_acc
-            v = predictions[:, i - 1, 1]
-            s = predictions[:, i - 1, 0]
-
-            # Condition for not driving in reverse
-            not_reverse = ~(v <= 0.0) | (a >= 0.0)
-
-            dt = torch.where(a >= 0.0, self.Ts, torch.min(self.Ts, v / -a))
-            v = torch.min(v, self.v_max)
-            s += v * dt + 0.5 * a * dt**2
-            v += a * dt
-
-            v = torch.where(not_reverse, v, torch.tensor(0.0, device=long_states.device))
-
-            predictions[:, i, :] = torch.stack((s, v, a), dim=1)
-
-        # Normalize
-        predictions = (predictions - self.observation_means[self.x_dim:self.x_dim+self.lead_dim]) / self.observation_stds[self.x_dim:self.x_dim+self.lead_dim]
-
-        return predictions
-
-
-
-       
+     
     def forward(self, x, cond, time, returns=None, skills=None, use_dropout=True, force_dropout=False):
         '''
             x : [ batch x action ]
@@ -655,26 +605,25 @@ class DynNet(nn.Module):
         '''
         t = self.time_mlp(time)
         batch_dim = x.shape[0]
-        x_bar = cond[0][:,0:4]
-        lead_states = cond[0][:,self.x_dim:self.x_dim+self.lead_dim]
-
+        cond_state = cond[0]
+        x_bar = cond_state[:,0:4]
+        lead_states = cond_state[:,10:].reshape(batch_dim, self.horizon+1, self.lead_dim)
+        # unnorm_cond_state = cond_state * self.observation_stds + self.observation_means
+        # unnorm_lead_states = unnorm_cond_state[:,10:].reshape(batch_dim, self.horizon+1, self.lead_dim)
         #call the simple forward prediction for each lead state
-        leader_states = torch.zeros((batch_dim,self.horizon+1,3)).to(x.device)
-        for i in range(batch_dim):
-            lead_state_pred = self.simple_forward_prediction(lead_states[i,:])
-            leader_states[i] = lead_state_pred
-
+        
         # new_leader_states = self.simple_forward_prediction_batch(lead_states)
         # import pdb; pdb.set_trace()
-        P_const = cond[0][:,self.x_dim+self.lead_dim:]
+        P_const = cond[0][:,self.x_dim+self.lead_dim:self.x_dim+self.lead_dim+self.p_const_dim]
         x_traj = [x_bar]
         us = []
+        leads = []
         for idx in range(self.horizon):
             index = (torch.tensor(idx, device=x.device).repeat(x.shape[0])) / (
                 self.horizon + 1
             )
             obs_x_bar = torch.cat((x_bar, index.unsqueeze(1)), dim=1)
-            leader_state_idx = leader_states[:,idx, :]
+            leader_state_idx = lead_states[:,idx, :]
             current_x = x[:,idx,:]
             # if idx == 0:
             #     import pdb; pdb.set_trace()
@@ -683,11 +632,17 @@ class DynNet(nn.Module):
             x_bar = self.dynamics(x_bar, u)
             x_traj.append(x_bar)
             us.append(u)
+            # leads.append(leader_state_idx)
         x_traj = torch.stack(x_traj, dim=1)[:,:-1,:] #remove last state
-        leader_states =leader_states[:,:-1,:]
+        lead_states =lead_states[:,:-1,:]
         us = torch.stack(us, dim=1)
         P_const = P_const.unsqueeze(1).repeat(1, self.horizon, 1)
-        out = torch.cat((us, x_traj,leader_states,P_const), dim=2)
+        # leads = torch.stack(leads, dim=1)
+        # import pdb; pdb.set_trace()
+        p_dyn = cond_state[:,10:]
+        #repeat p_dyn to match the shape of x_traj
+        p_dyn = p_dyn.unsqueeze(1).repeat(1, self.horizon, 1)
+        out = torch.cat((us, x_traj,lead_states, P_const,p_dyn), dim=2)
         return out
 
 class ValueFunctionH400(nn.Module):

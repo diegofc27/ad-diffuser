@@ -63,7 +63,7 @@ class ReplayBuffer:
 
     def add_path(self, path):
         path_length = len(path['observations'])
-        assert path_length <= self.max_path_length
+        assert path_length <= self.max_path_length, f"Path length {path_length} exceeds max path length {self.max_path_length}"
 
         ## if first path added, set keys based on contents
         self._add_keys(path)

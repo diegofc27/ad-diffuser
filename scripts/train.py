@@ -16,18 +16,18 @@ class Parser(utils.Parser):
     dataset: str = 'hopper-medium-expert-v2'
     config: str = 'config.locomotion'
 
-args = Parser().parse_args('diffusion-DynNet-bmw')
+args = Parser().parse_args('diffusion-multiple-shooting-bmw')
 print("batch size: ",args.batch_size)
-#start a new wandb run to track this script
-# wandb.init(
-#     # set the wandb project where this run will be logged
-#     project="thesis",
-#     entity="diegofc77",
-#     group=args.run_group,
-#     name=args.run_name,
-#     # track hyperparameters and run metadata
-#     config=args
-# )
+
+wandb.init(
+    # set the wandb project where this run will be logged
+    project="thesis",
+    entity="diegofc77",
+    group=args.run_group,
+    name=args.run_name,
+    # track hyperparameters and run metadata
+    config=args
+)
 #-----------------------------------------------------------------------------#
 #---------------------------------- dataset ----------------------------------#
 #-----------------------------------------------------------------------------#
@@ -90,7 +90,8 @@ diffusion_config = utils.Config(
     device=args.device,
     equal_weight=args.equal_weight,
     equal_action_weight=args.equal_action_weight,
-    normalizer=dataset.normalizer
+    normalizer=dataset.normalizer,
+    multiple_shooting=args.multiple_shooting,
 )
 
 trainer_config = utils.Config(
@@ -121,7 +122,7 @@ trainer_config = utils.Config(
 model = model_config()
 
 diffusion = diffusion_config(model)
-trainer = trainer_config(diffusion, dataset, None, wandb =None)
+trainer = trainer_config(diffusion, dataset, None, wandb =wandb)
 
 
 #-----------------------------------------------------------------------------#

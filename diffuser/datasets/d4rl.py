@@ -30,6 +30,8 @@ def suppress_output():
 #-----------------------------------------------------------------------------#
 
 def load_environment(name):
+    valid_names = ['BMW-v0', 'BMW-v0_test', 'BMW-v0_3l', 'BMW-v0_3l_test', 'BMW-v0-leader-pred', 'BMW-v0-leader-pred_test']
+
     if name == 'Safe_Grid_Simple-v0':
         env = Safe_Grid_Simple()
         return env
@@ -42,13 +44,13 @@ def load_environment(name):
     elif name == 'Safe_Grid-v0':
         env = Safe_Grid()
         return env
-    elif name == 'BMW-v0' or name == 'BMW-v0_test' or name == 'BMW-v0_3l' or name == 'BMW-v0_3l_test':
+    elif name in valid_names:
         class BMWEnv(gym.Env):
             def __init__(self):
                 self.action_space = gym.spaces.Box(-1, 1, (2,))
                 self.observation_space = gym.spaces.Box(-1, 1, (4,))
-                self.max_episode_steps = 32
-                self._max_episode_steps = 32
+                self.max_episode_steps = 30
+                self._max_episode_steps = 30
                 self.name = name
             def reset(self):
                 return np.zeros(4)
@@ -83,7 +85,12 @@ def get_dataset(env):
     elif env.name == 'BMW-v0_3l_test':
         with open('/home/fernandi/projects/diffuser/trajectories/bmw_test_3leader.pkl', 'rb') as handle:
             dataset = pickle.load(handle)
-    
+    elif env.name == 'BMW-v0-leader-pred':
+        with open('/home/fernandi/projects/diffuser/trajectories/bmw_train_leader_pred.pkl', 'rb') as handle:
+            dataset = pickle.load(handle)
+    elif env.name == 'BMW-v0-leader-pred_test':
+        with open('/home/fernandi/projects/diffuser/trajectories/bmw_test_leader_pred.pkl', 'rb') as handle:
+            dataset = pickle.load(handle)
     elif env.name == 'SafeGrid-v1' or env.name == 'Safe_Grid_Simple-v0':
          with open('/home/fernandi/projects/decision-diffuser/code/trajectories/safe_grid_v1_5000__rate_0.93.pickle', 'rb') as handle:
             dataset = pickle.load(handle)

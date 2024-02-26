@@ -137,12 +137,14 @@ for i in range(eval_episodes):
     batch = next(dataloader)
     obs = batch[1][0].squeeze(0)
     conditions = {0: obs}
- 
-    action, samples = policy(conditions, batch_size=args.batch_size, verbose=args.verbose)
+    # sample_kwargs = {"return_chain":True}
+
+    action, samples, chains = policy(conditions, batch_size=args.batch_size, verbose=args.verbose)
     pred_observation = samples.observations[0]
     pred_actions = samples.actions[0]
     target_actions = batch[0][0][:,0].numpy()
     target_observation =  batch[0][0][:,1:].numpy()
+    import pdb; pdb.set_trace()
 
     delta_actions = np.mean(np.abs(pred_actions - target_actions))
     total_delta_actions += delta_actions
